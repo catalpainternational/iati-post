@@ -1,0 +1,32 @@
+DEBUG = False
+
+# Check the 'docker-compose.yml' file for these settings
+DATABASES = {
+    "default": {
+        "ENGINE": "django.contrib.gis.db.backends.postgis",
+        "NAME": "iati_db",
+        "USER": "iati",
+        "PASSWORD": "iati",
+        "HOST": "localhost",
+        "PORT": "5436",
+    }
+}
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"simple": {"format": "%(name)s:%(levelname)s %(message)s"}},
+    "handlers": {
+        "console": {
+            "level": "WARNING",
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        }
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "WARNING",  # change to DEBUG to see all queries
+            "propagate": True,
+        },
+}

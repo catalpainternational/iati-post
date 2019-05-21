@@ -1,0 +1,4 @@
+django
+aiohttp
+channels
+django_extensions
