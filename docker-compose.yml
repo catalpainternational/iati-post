@@ -1,0 +1,12 @@
+version: "2"
+services:
+    iatiparser_db:
+        environment:
+            POSTGRES_USER: iati
+            POSTGRES_PASS: iati
+            POSTGRES_DBNAME: iati_db
+        image: kartoza/postgis:latest
+        ports:
+            - "5436:5432"
+        volumes:
+            - ./iatiparser_db_data:/var/lib/postgresql
