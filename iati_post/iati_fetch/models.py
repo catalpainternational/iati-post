@@ -21,6 +21,19 @@ class Organisation(models.Model):
         async_to_sync(fetch.organisation_list)()
         return cls.objects.all()
 
+    def fetchjson(self):
+        """
+        Fetch a listing of all this organisation's XML files
+        as a RequestSource object
+        """
+        return async_to_sync(fetch.organisation_json)(self.id)
+
+    def fetchxml(self):
+        """
+        Trigger a listing of all this organisation's XML files
+        """
+        return async_to_sync(fetch.organisation_xml)(self.id)
+
 
 class RequestSource(models.Model):
     """

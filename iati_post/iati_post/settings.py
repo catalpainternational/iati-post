@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # 3rd party
     "django_extensions",
+    "django.contrib.postgres",  # This allows HSTORE field
+    "channels",
     # Stuff we write
     "iati_fetch",
 ]
@@ -116,6 +118,19 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/2.2/howto/static-files/
 
 STATIC_URL = "/static/"
+
+# Add npm node_modules directory
+STATICFILES_DIRS = (os.path.join(BASE_DIR, "..", "node_modules"),)
+
+# List of finder classes that know how to find static files in
+# various locations.
+STATICFILES_FINDERS = (
+    "django.contrib.staticfiles.finders.FileSystemFinder",
+    "django.contrib.staticfiles.finders.AppDirectoriesFinder",
+)
+
+
+ASGI_APPLICATION = "iati_post.routing.application"
 
 try:
     from .local_settings import *

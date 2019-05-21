@@ -43,11 +43,13 @@ async def organisation_json(name: str = "1-uz"):
         request, created = model.objects.get_or_create(
             params__fq=f"organization:{name}",
             url=url,
-            defaults={
-                "expected_content_type": "json",
-                "params": {"fq": f"organization:{name}"},
-            },
+            defaults={"expected_content_type": "json"},
         )
+
+        if created:
+            request.params = {"fq": f"organization:{name}"}
+            request.save()
+
         if json:
             request.json = json
             request.save()
@@ -67,7 +69,7 @@ async def organisation_json(name: str = "1-uz"):
         record, created = await create_or_update_request_source(
             name, package_search_url, json.dumps(json_content)
         )
-
+    print(record.json)
     return record
 
 
@@ -81,7 +83,8 @@ async def organisation_xml(name: str = "1-uz", refresh_all: bool = False):
         request_urls_to_fetch = []
         for result in json.loads(RequestSource_json)["result"]["results"]:
             for resource in result["resources"]:
-                rs, created = RequestSource.objects.get_or_create(
+                model = apps.get_model("iati_fetch", "RequestSource")
+                rs, created = model.objects.get_or_create(
                     method="GET", expected_content_type="xml", url=resource["url"]
                 )
                 if (created or not rs.xml) or refresh_all:
@@ -91,6 +94,23 @@ async def organisation_xml(name: str = "1-uz", refresh_all: bool = False):
                     logger.debug("Content exists for %s", rs.url)
         logger.debug("Returning %s URLs", len(request_urls_to_fetch))
         return request_urls_to_fetch
+
+    @database_sync_to_async
+    def fetch_url_list_for_organisation(RequestSource_json: str) -> list:
+        urls = []
+        logger.debug("Parsing organisation resources list")
+        request_urls_to_fetch = []
+        for result in json.loads(RequestSource_json)["result"]["results"]:
+            for resource in result["resources"]:
+                model = apps.get_model("iati_fetch", "RequestSource")
+                rs, created = model.objects.get_or_create(
+                    method="GET", expected_content_type="xml", url=resource["url"]
+                )
+                if rs.xml:
+                    urls.append((rs.pk, rs.url, True))
+                else:
+                    urls.append((rs.pk, rs.url, False))
+        return urls
 
     @database_sync_to_async
     def create_or_update_xml_source(pk: int, url: str, xml: str = None):
@@ -118,6 +138,8 @@ async def organisation_xml(name: str = "1-uz", refresh_all: bool = False):
         logger.debug("XML content fetched %s", xml_url)
         await create_or_update_xml_source(rs_pk, xml_url, xml_content)
         logger.debug("XML source saved in database for %s", xml_url)
+
+    return fetch_url_list_for_organisation(request_source.json)
 
 
 async def organisation_list():

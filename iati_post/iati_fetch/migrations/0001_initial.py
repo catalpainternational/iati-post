@@ -3,37 +3,66 @@
 import django.contrib.postgres.fields.hstore
 import django.contrib.postgres.fields.jsonb
 from django.db import migrations, models
+from django.contrib.postgres.operations import HStoreExtension
 
 
 class Migration(migrations.Migration):
 
     initial = True
 
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
+        HStoreExtension(),
         migrations.CreateModel(
-            name='Organisation',
-            fields=[
-                ('id', models.TextField(primary_key=True, serialize=False)),
-            ],
+            name="Organisation",
+            fields=[("id", models.TextField(primary_key=True, serialize=False))],
         ),
         migrations.CreateModel(
-            name='RequestSource',
+            name="RequestSource",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('method', models.CharField(choices=[('GET', 'GET'), ('POST', 'POST')], default='GET', max_length=6)),
-                ('params', django.contrib.postgres.fields.hstore.HStoreField(null=True)),
-                ('url', models.URLField()),
-                ('expected_content_type', models.CharField(blank=True, choices=[('json', 'json'), ('xml', 'xml'), ('html', 'html')], default='html', max_length=6, null=True)),
-                ('success', models.NullBooleanField(default=None)),
-                ('html', models.TextField(blank=True, null=True)),
-                ('json', django.contrib.postgres.fields.jsonb.JSONField(blank=True, null=True)),
-                ('xml', models.TextField(blank=True, null=True)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "method",
+                    models.CharField(
+                        choices=[("GET", "GET"), ("POST", "POST")],
+                        default="GET",
+                        max_length=6,
+                    ),
+                ),
+                (
+                    "params",
+                    django.contrib.postgres.fields.hstore.HStoreField(null=True),
+                ),
+                ("url", models.URLField()),
+                (
+                    "expected_content_type",
+                    models.CharField(
+                        blank=True,
+                        choices=[("json", "json"), ("xml", "xml"), ("html", "html")],
+                        default="html",
+                        max_length=6,
+                        null=True,
+                    ),
+                ),
+                ("success", models.NullBooleanField(default=None)),
+                ("html", models.TextField(blank=True, null=True)),
+                (
+                    "json",
+                    django.contrib.postgres.fields.jsonb.JSONField(
+                        blank=True, null=True
+                    ),
+                ),
+                ("xml", models.TextField(blank=True, null=True)),
             ],
-            options={
-                'unique_together': {('method', 'params', 'url')},
-            },
+            options={"unique_together": {("method", "params", "url")}},
         ),
     ]

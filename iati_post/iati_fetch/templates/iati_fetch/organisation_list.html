@@ -1,0 +1,19 @@
+{% extends 'bootstrap_starter.html' %}
+{% block title %}
+<title>Home</title>
+{% endblock %}
+
+{% block main %}
+<div class="starter-template">
+    <h1>Organisations</h1>
+    <p class="lead">A slightly asynchronous IATI data explorer.</p>
+    <a class="btn btn-warning" href="{% url 'iati-fetch:org-delete' %}">Delete all</a>
+    <a class="btn btn-primary" href="{% url 'iati-fetch:org-fetch' %}">Fetch all</a>
+
+    <div class="row">{% for o in organisations %}
+        <div class="col-2">
+            <a href='{% url "iati-fetch:org-detail" organisation_id=o.pk %}'>{{o.pk}}
+        </div>{% endfor %}
+    </div>
+</div>
+{% endblock main %}
