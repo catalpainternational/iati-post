@@ -1,6 +1,7 @@
 from django.db import models
 from asgiref.sync import async_to_sync
 from . import fetch
+from django.contrib.postgres.fields import HStoreField, JSONField
 
 
 class Organisation(models.Model):
@@ -31,7 +32,7 @@ class RequestSource(models.Model):
     EXPECTED_CONTENT_CHOICES = (("json", "json"), ("xml", "xml"), ("html", "html"))
 
     method = models.CharField(max_length=6, choices=METHOD_CHOICES, default="GET")
-    params = pgfields.HStoreField(null=True)
+    params = HStoreField(null=True)
     url = models.URLField()
     expected_content_type = models.CharField(
         max_length=6,
@@ -44,7 +45,7 @@ class RequestSource(models.Model):
     success = models.NullBooleanField(default=None, null=True, blank=True)
 
     html = models.TextField(null=True, blank=True)
-    json = pgfields.JSONField(null=True, blank=True)
+    json = JSONField(null=True, blank=True)
     xml = models.TextField(
         null=True, blank=True
     )  # Actually this is going to be an XML field
