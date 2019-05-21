@@ -10,7 +10,7 @@ python3.7
 
 python3.7 -m venv env
 . env/bin/activate
-pip install django channels aiohttp
+pip install -r requirements.txt # django channels aiohttp
 
 ### Start docker, redis services
 
