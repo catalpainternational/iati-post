@@ -128,7 +128,7 @@ async def organisation_list():
     """
 
     @database_sync_to_async
-    def get_or_set_request_source(json: dict) -> (RequestSource, bool):
+    def get_or_set_request_source(json: dict) -> ("RequestSource", bool):
         model = apps.get_model("iati_fetch", "RequestSource")
         rs, created = model.objects.get_or_create(
             url=organisation_list_url,

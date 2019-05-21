@@ -2,6 +2,8 @@ from django.db import models
 from asgiref.sync import async_to_sync
 from . import fetch
 from django.contrib.postgres.fields import HStoreField, JSONField
+from django.utils.functional import cached_property
+from lxml import etree
 
 
 class Organisation(models.Model):
@@ -58,11 +60,6 @@ class RequestSource(models.Model):
         if not self.xml:
             return None
         return etree.fromstring(self.xml)
-
-    def iatixml(self):
-        if self.__etree is None:
-            return None
-        return IatiActivitiesXml(self.__etree)
 
     def fetch(self):
         raise NotImplementedError(
