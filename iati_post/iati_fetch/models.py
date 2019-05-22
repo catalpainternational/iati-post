@@ -21,6 +21,35 @@ class Organisation(models.Model):
         async_to_sync(fetch.organisation_list)()
         return cls.objects.all()
 
+    def _request_json(self):
+        try:
+            return RequestSource.objects.get(
+                params__fq=f"organization:{self.pk}",
+                url=url,
+                defaults={"expected_content_type": "json"},
+            )
+        except RequestSource.DoesNotExist:
+            return None
+
+    def json_request_parameters(self) -> dict:
+        """
+        Return the URL and parameters for a search of this organisation's data
+        This should basically provide input suitable for a RequestSource
+        """
+
+        return {
+            "method": "GET",
+            "url": fetch.organisation_list_url,
+            "params": {"fq": f"organization:{self.pk}"},
+            "expected_content_type": "json",
+        }
+
+    def get_json_request_source(self) -> ("RequestSource", bool):
+        """
+        Get or Create a RequestSource object for the JSON relating to this organisation
+        """
+        return RequestSource.objects.get_or_create(**self.json_request_parameters())
+
     def fetchjson(self):
         """
         Fetch a listing of all this organisation's XML files

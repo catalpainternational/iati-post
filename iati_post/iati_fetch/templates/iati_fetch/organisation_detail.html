@@ -7,5 +7,9 @@
     <a class="btn btn-primary" href="{% url 'iati-fetch:org-fetch-json' organisation_id=org.id %}">Fetch JSON data for this org</a>
     <a class="btn btn-primary" href="{% url 'iati-fetch:org-fetch-xml' organisation_id=org.id %}">Fetch XML links</a>
     {{ org }}
+    <h2>JSON</h2>
+
+    <h2>XML Links</h2>
+
 </div>
 {% endblock main %}

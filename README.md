@@ -11,7 +11,7 @@ nodejs (tested with v12)
 
 python3.7 -m venv env
 . env/bin/activate
-pip install -r requirements.txt # django channels aiohttp
+pip install -r requirements.txt # django channels aiohttp channels_redis
 npm i
 
 ### Start docker, redis services
@@ -30,4 +30,16 @@ This is (currently) a wrapper around an async function to fetch the initial orga
 
 Organisation.objects.first().fetchxml()
 
-This is (currently) a wrapper arouns an async function to fetch the list of XML files which an Organisation has in its details
+This is (currently) a wrapper around an async function to fetch the list of XML files which an Organisation has in its details
+
+### Channels
+
+```
+./manage.py runworker request
+```
+
+Once done, you should be able to (in different window) shell_plus and run
+
+```
+async_to_sync(get_channel_layer().send)('request',{'type': 'get'})
+```
