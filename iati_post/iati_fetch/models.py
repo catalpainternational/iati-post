@@ -1,110 +1,112 @@
-from django.db import models
+import json
+import logging
+
 from asgiref.sync import async_to_sync
-from . import fetch
+from channels.layers import get_channel_layer
 from django.contrib.postgres.fields import HStoreField, JSONField
+from django.core.cache import cache
+from django.db import models
 from django.utils.functional import cached_property
 from lxml import etree
 
+from . import fetch
+from .make_hashable import request_hash
+
+logger = logging.getLogger(__name__)
+
 
 class Organisation(models.Model):
+    """
+    Helper functions
+
+    Organisation.call_fetch()
+    This will trigger a call to the IATI API to cache a list of organisations
+
+    Organisation.call_process()
+    This will fetch cached orgs from redis and update the database
+    """
+
     id = models.TextField(primary_key=True)
+    iatiorganisation = JSONField(null=True)
 
     def __str__(self):
         return self.id
 
-    @classmethod
-    def fetch(cls):
+    @staticmethod
+    def call_fetch():
         """
-        Trigger a fetch of all Organisation
-        objects
+        Call IATI, are there new organisations?
         """
-        async_to_sync(fetch.organisation_list)()
-        return cls.objects.all()
-
-    def _request_json(self):
-        try:
-            return RequestSource.objects.get(
-                params__fq=f"organization:{self.pk}",
-                url=url,
-                defaults={"expected_content_type": "json"},
-            )
-        except RequestSource.DoesNotExist:
-            return None
-
-    def json_request_parameters(self) -> dict:
-        """
-        Return the URL and parameters for a search of this organisation's data
-        This should basically provide input suitable for a RequestSource
-        """
-
-        return {
-            "method": "GET",
-            "url": fetch.organisation_list_url,
-            "params": {"fq": f"organization:{self.pk}"},
-            "expected_content_type": "json",
-        }
-
-    def get_json_request_source(self) -> ("RequestSource", bool):
-        """
-        Get or Create a RequestSource object for the JSON relating to this organisation
-        """
-        return RequestSource.objects.get_or_create(**self.json_request_parameters())
-
-    def fetchjson(self):
-        """
-        Fetch a listing of all this organisation's XML files
-        as a RequestSource object
-        """
-        return async_to_sync(fetch.organisation_json)(self.id)
-
-    def fetchxml(self):
-        """
-        Trigger a listing of all this organisation's XML files
-        """
-        return async_to_sync(fetch.organisation_xml)(self.id)
-
-
-class RequestSource(models.Model):
-    """
-    Acts as a cache and processing hub for any requests made, particularly for XML extraction
-    """
-
-    class Meta:
-        unique_together = (("method", "params", "url"),)
-
-    METHOD_CHOICES = (("GET", "GET"), ("POST", "POST"))
-    EXPECTED_CONTENT_CHOICES = (("json", "json"), ("xml", "xml"), ("html", "html"))
-
-    method = models.CharField(max_length=6, choices=METHOD_CHOICES, default="GET")
-    params = HStoreField(null=True)
-    url = models.URLField()
-    expected_content_type = models.CharField(
-        max_length=6,
-        choices=EXPECTED_CONTENT_CHOICES,
-        default="html",
-        null=True,
-        blank=True,
-    )
-
-    success = models.NullBooleanField(default=None, null=True, blank=True)
-
-    html = models.TextField(null=True, blank=True)
-    json = JSONField(null=True, blank=True)
-    xml = models.TextField(
-        null=True, blank=True
-    )  # Actually this is going to be an XML field
-
-    def __str__(self):
-        return f"{self.url}"
-
-    @cached_property
-    def __etree(self) -> etree._Element:
-        if not self.xml:
-            return None
-        return etree.fromstring(self.xml)
-
-    def fetch(self):
-        raise NotImplementedError(
-            "This is to be implemented as an async task. For now, call relevant functions in fetch.py"
+        async_to_sync(get_channel_layer().send)(
+            "iati", dict(type="organisation.list.fetch")
         )
 
+    @staticmethod
+    def call_process():
+        """
+        Call an update of the organisation list
+        """
+        async_to_sync(get_channel_layer().send)(
+            "iati", dict(type="organisation.list.process")
+        )
+
+    def json(self):
+        """
+        The cached result of an IATI search for documents
+        Raises a KeyError if not existing yet, and fires off
+        a request to fetch
+        """
+        params = {"fq": f"organization:{self.pk}"}
+        url = fetch.package_search_url
+
+        data = cache.get(request_hash(params, url))
+        if not data:
+
+            message = (
+                "request",
+                dict(
+                    type="get",
+                    params={"fq": f"organization:{self.pk}"},
+                    url=fetch.package_search_url,
+                ),
+            )
+
+            # Trigger, via channels, a request to pull this organisation's data and
+            # then raise a KeyError
+            async_to_sync(get_channel_layer().send)(*message)
+
+            return {
+                "waiting": "No json found, but a request has been made and should be ready soon - try again in a few seconds"
+            }
+        return json.loads(data)
+
+    def list_xmls(self):
+        """
+        Return a list of XML files which are resources for this organisation
+        """
+
+        resources = []
+        for result in self.json()["result"]["results"]:
+            for resource in result["resources"]:
+                # Add this to the list of xmlsources to cache / parse
+                resources.append(resource["url"])
+        return resources
+
+    def fetch_xmls(self):
+        """
+        Send a number of messages, via Channels, to cache the content of this organisation's xml files
+        """
+        for url in self.list_xmls():
+            if not cache.has_key(request_hash(params={}, url=url)):
+                async_to_sync(get_channel_layer().send)(
+                    "request", dict(type="get", params={}, url=url)
+                )
+            else:
+                logger.debug("Skip call on %s  - ought to exist already", url)
+
+
+class Activity(models.Model):
+
+    identifier = models.TextField(primary_key=True)
+    xml = models.TextField()
+    json = JSONField()  # We will use 'xmltodict' to convert an activity into JSON data

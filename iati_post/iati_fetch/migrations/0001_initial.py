@@ -2,8 +2,8 @@
 
 import django.contrib.postgres.fields.hstore
 import django.contrib.postgres.fields.jsonb
-from django.db import migrations, models
 from django.contrib.postgres.operations import HStoreExtension
+from django.db import migrations, models
 
 
 class Migration(migrations.Migration):

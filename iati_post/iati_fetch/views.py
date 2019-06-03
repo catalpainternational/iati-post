@@ -1,6 +1,6 @@
-from django.views.generic import View, TemplateView
 from django.apps import apps
 from django.shortcuts import redirect
+from django.views.generic import TemplateView, View
 
 # Create your views here.
 
@@ -56,4 +56,3 @@ class OrganisationDelete(TemplateView):
     def get(self, request):
         apps.get_model("iati_fetch", "Organisation").objects.all().delete()
         return redirect("iati-fetch:orgs")
-
