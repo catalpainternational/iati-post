@@ -41,5 +41,10 @@ This is (currently) a wrapper around an async function to fetch the list of XML 
 Once done, you should be able to (in different window) shell_plus and run
 
 ```
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 async_to_sync(get_channel_layer().send)('request',{'type': 'get'})
 ```
+
+```
+async_to_sync(get_channel_layer().send)('iati', {'type': 'parse_xml', 'url': 'https://ngoaidmap.org/iati/organizations/225'})

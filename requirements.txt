@@ -1,2 +1,5 @@
 lxml
 channels_redis
+diskcache
+aiohttp
+xmltodict
