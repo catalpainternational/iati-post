@@ -106,3 +106,4 @@ node_modules/
 
 # For disk cache
 disk_cache/
+.vscode/tags
