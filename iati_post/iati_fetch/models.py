@@ -8,22 +8,19 @@ from django.core.cache import cache
 from django.db import models
 from django.utils.functional import cached_property
 from lxml import etree
-
+import time
 from . import fetch
 from .make_hashable import request_hash
 
 logger = logging.getLogger(__name__)
 
-
 class Organisation(models.Model):
     """
     Helper functions
 
-    Organisation.call_fetch()
+    Organisation.refresh()
     This will trigger a call to the IATI API to cache a list of organisations
 
-    Organisation.call_process()
-    This will fetch cached orgs from redis and update the database
     """
 
     id = models.TextField(primary_key=True)
@@ -33,52 +30,55 @@ class Organisation(models.Model):
         return self.id
 
     @staticmethod
-    def call_fetch():
+    def refresh():
         """
-        Call IATI, are there new organisations?
+        Call an update of the organisation list
         """
         async_to_sync(get_channel_layer().send)(
             "iati", dict(type="organisation.list.fetch")
         )
 
+    @classmethod
+    def list(cls):
+        rhash = request_hash(params={}, url=fetch.organisation_list_url)
+        sent = False
+        try_num = 0
+        while not cache.has_key(rhash):
+            try_num += 1
+            timeout = 2**try_num
+            if not sent:
+                cls.refresh()
+                sent = True
+            logger.debug('waiting %s seconds', timeout)
+            time.sleep(timeout)
+
+        response = cache.get(rhash)
+        r = json.loads(response)
+        return r["result"]
+              
+
     @staticmethod
-    def call_process():
+    def json(organisation_name):
         """
-        Call an update of the organisation list
+        The cached result of an IATI dataset on a particular organisation.
+        Returns JSON or fires off a request to fetch it.
         """
-        async_to_sync(get_channel_layer().send)(
-            "iati", dict(type="organisation.list.process")
-        )
-
-    def json(self):
-        """
-        The cached result of an IATI search for documents
-        Raises a KeyError if not existing yet, and fires off
-        a request to fetch
-        """
-        params = {"fq": f"organization:{self.pk}"}
-        url = fetch.package_search_url
-
-        data = cache.get(request_hash(params, url))
-        if not data:
-
-            message = (
-                "request",
-                dict(
-                    type="get",
-                    params={"fq": f"organization:{self.pk}"},
-                    url=fetch.package_search_url,
-                ),
+        request = dict(
+                method="GET",
+                params={"fq": f"organization:{self.pk}"},
+                url=fetch.package_search_url
             )
+        data = cache.get(request_hash(**request))
 
-            # Trigger, via channels, a request to pull this organisation's data and
-            # then raise a KeyError
-            async_to_sync(get_channel_layer().send)(*message)
+        if data:
+            return json.loads(data)
 
-            return {
-                "waiting": "No json found, but a request has been made and should be ready soon - try again in a few seconds"
-            }
-        return json.loads(data)
+        async_to_sync(get_channel_layer().send)("request", request)
+
+        return {
+            "waiting": "No json found, but a request has been made and should be ready soon - try again in a few seconds"
+        }
+
 
     def list_xmls(self):
         """
@@ -86,6 +86,10 @@ class Organisation(models.Model):
         """
 
         resources = []
+        json_data = self.json()
+        if 'waiting' in json_data:
+            logger.debug('Waiting: No JSON found')
+            return []
         for result in self.json()["result"]["results"]:
             for resource in result["resources"]:
                 # Add this to the list of xmlsources to cache / parse
@@ -104,9 +108,27 @@ class Organisation(models.Model):
             else:
                 logger.debug("Skip call on %s  - ought to exist already", url)
 
+    def from_xml(organisation_element:dict):
+
+        # What happens if there is more than one `organisation` element? We would need to iterate through
+        name = organisation_element["name"]["narrative"]
+        name = organisation_element['organisation-identifier']
+        o, _created = model.objects.get_or_create(id=name, defaults=dict(json=activity_element))
+        o.iatiorganisation = organisation_element
+        o.save()
+
 
 class Activity(models.Model):
 
     identifier = models.TextField(primary_key=True)
     xml = models.TextField()
     json = JSONField()  # We will use 'xmltodict' to convert an activity into JSON data
+
+    def from_xml(activity_element: dict):
+        act, created = self.objects.get_or_create(
+            pk=activity_element["iati-identifier"], defaults=dict(json=activity_element)
+        )
+        if not created:
+            act.json = activity_element
+            act.save()
+        return act

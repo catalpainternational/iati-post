@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-
+import time
 import aioredis
 import xmltodict
 from aiohttp import ClientSession, TCPConnector
@@ -24,7 +24,7 @@ package_search_url = f"{api_root}action/package_search"
 
 @sync_to_async
 def cache_response(params: dict, url: str, response_text: str):
-    rhash = request_hash(params, url)
+    rhash = request_hash(params=params, url=url)
     cache.set(rhash, response_text)
     logger.debug("Saved response to %s", rhash)
     logger.debug("Response length is: %s", len(response_text))
@@ -37,20 +37,7 @@ def save_organisations(element: dict):
     Expects to receive content as per "iati-organisations"
     """
     model = apps.get_model("iati_fetch", "Organisation")
-    organisation = element["iati-organisation"]
-    # What happens if there is more than one `organisation` element? We would need to iterate through
-    name = organisation["name"]["narrative"]
-    o, _created = model.objects.get_or_create(id=name)
-    o.iatiorganisation = organisation
-    logger.debug("Organisation data: %s", organisation)
-    o.save()
-
-    organisation = element["iati-activity"]
-    if isinstance(activities, dict):
-        save_one(activities)
-    else:
-        for a in activities:
-            save_one(a)
+    model.from_xml(element["iati-organisation"])
 
 
 def save_activities(element: dict):
@@ -58,19 +45,12 @@ def save_activities(element: dict):
     Save an 'iati-activities/iati-activity' represented in JSON to db
     """
     model = apps.get_model("iati_fetch", "Activity")
-    act, created = model.objects.get_or_create(
-        pk=json_part["iati-identifier"], defaults=dict(json=json_part)
-    )
-    if not created:
-        act.json = json_part
-        act.save()
-
     activity = element["iati-activity"]
-    if isinstance(activities, dict):
-        save_one(activities)
+    if isinstance(activity, dict):
+        model.from_xml(activity)
     else:
-        for a in activities:
-            save_one(a)
+        for a in activity:
+            model.from_xml(activity)
 
 
 async def fetch_to_cache(params, url, method: str = "GET") -> "Response":
@@ -88,7 +68,6 @@ async def fetch_to_cache(params, url, method: str = "GET") -> "Response":
             if response.status != 200:
                 logger.debug("not caching due to a non 200: %s", response.status)
                 response_text = await response.text()
-                print(response.text)
 
             elif response.status == 200:
                 response_text = await response.text()
@@ -97,8 +76,35 @@ async def fetch_to_cache(params, url, method: str = "GET") -> "Response":
                 )
             else:
                 logger.debug("Unhandled response code")
-            return response
 
+def event_to_request(e):
+    return dict(
+        url = event.get("url", "http://example.com"),
+        params = event.get("params", {})
+    )
+
+async def fetch(url, params):
+    '''
+    'Cache' content of a URL
+    This is a wrapper around 'fetch_to_cache'
+    '''
+    rhash = request_hash(url=url, params=params)
+
+    if cache.has_key(rhash):
+        logger.debug("Response exists. Drop cache value to renew")
+        return
+
+    response = await fetch_to_cache(params=params, url=url)
+
+    message = {
+        **event,
+        "type": "response_cached",
+        "hash": rhash,
+        "response": {"status": response.status, 'content_type': response.content_type, 'encoding': response.get_encoding() },
+    }
+    # This is a general-purpose "response handler"
+    # Abstracted out of here as it's not directly related to fetching
+    get_channel_layer.send("request-process", message)
 
 class RequestConsumer(SyncConsumer):
     """
@@ -106,14 +112,12 @@ class RequestConsumer(SyncConsumer):
     """
 
     def get(self, event):
-        url = event.get("url", "http://example.com")
-        params = event.get("params", {})
-        logger.debug("%s request received", url)
-        if cache.has_key(request_hash(url=url, params=params)):
-            logger.debug("Response exists. Drop cache value to renew")
-            return
-        response = async_to_sync(fetch_to_cache)(params=params, url=url)
-        logger.debug(response.status)
+        """
+        Simple fetcher for a URL.
+        Returns cache content if there is a request hash; otherwise fetches to the cache
+        and sends an 'ok' message
+        """
+        return async_to_sync(fetch)(**event_to_request(event))
 
     def clear_cache(self, event):
         url = event.get("url", "http://example.com")
@@ -125,6 +129,23 @@ class RequestConsumer(SyncConsumer):
             return
 
 
+class RequestProcessConsumer(SyncConsumer):
+    def response_cached(self, event):
+        logger.debug(event)
+        '''
+        This handler directs cached responses to
+        processors depending on content type
+        '''
+        url = event.get("url")
+        params = event.get("params", {})
+
+
+        if event['response']['content_type'] == 'text/html':
+            pass
+        elif event['response']['content_type'] == 'text/xml':
+            async_to_sync(self.channel_layer.send)("iati", {'type': 'parse.xml', 'url': url, 'params': params})
+
+
 class IatiRequestConsumer(SyncConsumer):
     """
     Fetch and cache IATI-related URLS
@@ -133,9 +154,7 @@ class IatiRequestConsumer(SyncConsumer):
     def parse_xml(self, event):
         """
         Read an IATI xml file from cache and attempt to populate Organisation(s) / Activit[y/ies] from it
-        
             async_to_sync(get_channel_layer().send)('iati', {'type': 'parse_xml', 'url': 'https://files.transparency.org/content/download/2279/14136/file/IATI_TIS_Organisation.xml', 'params': {}})
-        
         """
         params = event.get("params")
         url = event["url"]
@@ -169,7 +188,6 @@ class IatiRequestConsumer(SyncConsumer):
         This should put the list of organisations  to
         the redis response cache
         """
-
         async_to_sync(self.channel_layer.send)(
             "request",
             {
@@ -179,25 +197,3 @@ class IatiRequestConsumer(SyncConsumer):
                 "expected_content_type": "json",
             },
         )
-
-    def organisation_list_process(self, event):
-        """
-        Fetch the cached response of organisation_list_url and refresh the list of organisations
-        from it
-        """
-        rhash = request_hash(params={}, url=organisation_list_url)
-        if not cache.has_key(rhash):
-            raise KeyError("Organisation list not cached. Send a fetch call first")
-        response = cache.get(rhash)
-        r = json.loads(response)
-        organisations = r["result"]
-        model = apps.get_model("iati_fetch", "Organisation")
-        in_db = list(model.objects.values_list("pk", flat=True))
-        for org in r["result"]:
-            if org not in in_db:
-                model.objects.create(pk=org)
-                logger.debug(f"Created {org}")
-        for org in in_db:
-            if org not in r["result"]:
-                model.objects.get(pk=org).delete()
-                logger.debug(f"Deleted {org}")

@@ -26,7 +26,13 @@
             "request": "launch",
             "program": "${workspaceFolder}/iati_post/manage.py",
             "console": "integratedTerminal",
-            "args": ["runworker", "iati", "organisation", "request"],
+            "args": [
+                "runworker",
+                "iati",
+                "organisation",
+                "request",
+                "request-process"
+            ],
             "django": true
         }
     ]

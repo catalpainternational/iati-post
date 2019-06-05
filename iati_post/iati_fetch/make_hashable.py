@@ -15,7 +15,6 @@ def make_hash_sha256(o):
 
 def make_hashable(o):
     if isinstance(o, (tuple, list)):
-        print(o)
         return tuple((make_hashable(e) for e in o))
 
     if isinstance(o, dict):
@@ -27,13 +26,13 @@ def make_hashable(o):
     return o
 
 
-def request_hash(params: dict, url: str, method: str = "GET"):
-    if method != "GET":
-        params["_method"] = method
-    hash_content = {"__url__": url, **params}
-    sha_hash = make_hash_sha256(hash_content)
-    logger.debug("%s %s -> %s", url, params, sha_hash)
-    return sha_hash
+def request_hash(params: dict=None, url: str='www.example.com', method: str = "GET"):
+    dict_to_hash = {"__url__": url, "__method__": method}
+    if params:
+        dict_to_hash.update(params)
+    rhash = make_hashable(dict_to_hash)
+    logger.debug('Hash generated: %s -> %s', dict_to_hash, rhash)
+    return rhash
 
 
 if __name__ == "__main__":
