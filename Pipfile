@@ -1,0 +1,27 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+jupyter = "*"
+jupyterlab = "*"
+ipykernel = "*"
+django_extensions = "*"
+mypy = "*"
+
+[packages]
+ipykernel = "*"
+psycopg2-binary = "*"
+daphne = "*"
+cryptography = "*"
+xmltodict = "*" 
+django = "*"
+redis = "*"
+channels = "*"
+channels_redis = "*"
+diskcache = "*"
+aiohttp = "*"
+
+[requires]
+python_version = "3.7"

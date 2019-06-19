@@ -12,7 +12,6 @@ application = ProtocolTypeRouter(
             {
                 "request": consumers.RequestConsumer,
                 "iati": consumers.IatiRequestConsumer,
-                "request-process": consumers.RequestProcessConsumer,
             }
         )
     }

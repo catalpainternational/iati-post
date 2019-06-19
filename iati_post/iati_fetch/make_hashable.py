@@ -26,7 +26,7 @@ def make_hashable(o):
     return o
 
 
-def request_hash(params: dict=None, url: str='www.example.com', method: str = "GET"):
+def request_hash(params: dict=None, url: str='www.example.com', method: str = "GET", **kwargs):
     dict_to_hash = {"__url__": url, "__method__": method}
     if params:
         dict_to_hash.update(params)

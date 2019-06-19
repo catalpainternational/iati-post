@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import time
-import aioredis
 import xmltodict
 from aiohttp import ClientSession, TCPConnector
 from asgiref.sync import async_to_sync, sync_to_async
@@ -23,21 +22,21 @@ package_search_url = f"{api_root}action/package_search"
 
 
 @sync_to_async
-def cache_response(params: dict, url: str, response_text: str):
-    rhash = request_hash(params=params, url=url)
+def cache_response(url: str='www.example.com', params: dict={}, method:str='GET', response_text: str=""):
+    rhash = request_hash(url=url, params=params, method=method)
     cache.set(rhash, response_text)
     logger.debug("Saved response to %s", rhash)
     logger.debug("Response length is: %s", len(response_text))
 
 
-def save_organisations(element: dict):
+def save_organisations(element: dict, abbreviation: str):
     """
     Return an Organisation model derived from an iati-organisations XML file
     A suitable example can be found at 'https://files.transparency.org/content/download/2279/14136/file/IATI_TIS_Organisation.xml'
     Expects to receive content as per "iati-organisations"
     """
     model = apps.get_model("iati_fetch", "Organisation")
-    model.from_xml(element["iati-organisation"])
+    model.from_xml(element["iati-organisation"], abbreviation)
 
 
 def save_activities(element: dict):
@@ -53,7 +52,7 @@ def save_activities(element: dict):
             model.from_xml(activity)
 
 
-async def fetch_to_cache(params, url, method: str = "GET") -> "Response":
+async def fetch_to_cache(url:str, params:dict, method:str='GET') -> "Response":
     """
     Just because we can async.
     Equivalent code could be written with requests, however if we do extend this to
@@ -67,44 +66,26 @@ async def fetch_to_cache(params, url, method: str = "GET") -> "Response":
             logger.debug("fetch_to_cache received %s", response.status)
             if response.status != 200:
                 logger.debug("not caching due to a non 200: %s", response.status)
-                response_text = await response.text()
-
             elif response.status == 200:
                 response_text = await response.text()
-                await cache_response(
-                    params=params, url=url, response_text=response_text
-                )
+                await cache_response(url=url, params=params, response_text=response_text)
             else:
                 logger.debug("Unhandled response code")
 
-def event_to_request(e):
-    return dict(
-        url = event.get("url", "http://example.com"),
-        params = event.get("params", {})
-    )
 
-async def fetch(url, params):
+def fetch(url:str, params:dict={}, method:str='GET'):
     '''
     'Cache' content of a URL
     This is a wrapper around 'fetch_to_cache'
     '''
-    rhash = request_hash(url=url, params=params)
+    rhash = request_hash(url=url, params=params, method=method)
 
     if cache.has_key(rhash):
         logger.debug("Response exists. Drop cache value to renew")
         return
 
-    response = await fetch_to_cache(params=params, url=url)
+    response = async_to_sync(fetch_to_cache)(params=params, url=url, method=method)
 
-    message = {
-        **event,
-        "type": "response_cached",
-        "hash": rhash,
-        "response": {"status": response.status, 'content_type': response.content_type, 'encoding': response.get_encoding() },
-    }
-    # This is a general-purpose "response handler"
-    # Abstracted out of here as it's not directly related to fetching
-    get_channel_layer.send("request-process", message)
 
 class RequestConsumer(SyncConsumer):
     """
@@ -117,33 +98,20 @@ class RequestConsumer(SyncConsumer):
         Returns cache content if there is a request hash; otherwise fetches to the cache
         and sends an 'ok' message
         """
-        return async_to_sync(fetch)(**event_to_request(event))
+        logger.debug('Received GET request on %s', event['url'])
+        return fetch(url=event['url'], params=event.get('params', {}), method=event.get('method', 'GET'))
 
     def clear_cache(self, event):
-        url = event.get("url", "http://example.com")
+
+        url=event['url']
         params = event.get("params", {})
+        method=event.get('method', 'GET')
+
         logger.debug("Clear cache for %s request received", url)
-        rhash = request_hash(url=url, params=params)
+        rhash = request_hash(url=url, params=params, method=method)
         if cache.has_key(rhash):
             cache.delete(rhash)
             return
-
-
-class RequestProcessConsumer(SyncConsumer):
-    def response_cached(self, event):
-        logger.debug(event)
-        '''
-        This handler directs cached responses to
-        processors depending on content type
-        '''
-        url = event.get("url")
-        params = event.get("params", {})
-
-
-        if event['response']['content_type'] == 'text/html':
-            pass
-        elif event['response']['content_type'] == 'text/xml':
-            async_to_sync(self.channel_layer.send)("iati", {'type': 'parse.xml', 'url': url, 'params': params})
 
 
 class IatiRequestConsumer(SyncConsumer):
@@ -154,16 +122,15 @@ class IatiRequestConsumer(SyncConsumer):
     def parse_xml(self, event):
         """
         Read an IATI xml file from cache and attempt to populate Organisation(s) / Activit[y/ies] from it
-            async_to_sync(get_channel_layer().send)('iati', {'type': 'parse_xml', 'url': 'https://files.transparency.org/content/download/2279/14136/file/IATI_TIS_Organisation.xml', 'params': {}})
+            async_to_sync(get_channel_layer().send)('iati', {'type': 'parse_xml', 'url': 'https://files.transparency.org/content/download/2279/14136/file/IATI_TIS_Organisation.xml'})
         """
-        params = event.get("params")
         url = event["url"]
 
-        rhash = request_hash(url=url, params=params)
+        rhash = request_hash(url=url)
         request_text = cache.get(rhash)
 
         if not request_text:
-            request = async_to_sync(fetch_to_cache)(url=url, params=params)
+            request = fetch(url=url)
             request_text = cache.get(rhash)
 
         if not request_text:
@@ -179,7 +146,7 @@ class IatiRequestConsumer(SyncConsumer):
             return
 
         if "iati-organisations" in request_as_json:
-            save_organisations(request_as_json["iati-organisations"])
+            save_organisations(request_as_json["iati-organisations"], abbreviation=event.get('abbreviation', None))
         if "iati-activities" in request_as_json:
             save_activities(request_as_json["iati-activities"])
 

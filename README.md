@@ -106,3 +106,18 @@ Next:
 ```
 pipenv run jupyter lab
 ```
+
+### Tmux
+
+Start a new project like this
+
+```
+EDITOR=nano tmuxinator new iatipost
+```
+or (if already have session)
+```
+EDITOR=nano tmuxinator start iatipost
+```
+
+Copy `iatipost.yml` to `~/.tmuxinator`
+This runs a shell and some handlers
