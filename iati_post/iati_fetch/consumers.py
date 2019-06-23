@@ -314,12 +314,18 @@ class IatiXMLRequest(XMLRequest):
         """
         activities = await self.activities()
         if activities:
-            for el in activities[0]:
-                await database_sync_to_async(Activity.from_xml)(el)
+            if isinstance(activities, list):
+                for el in activities:
+                    await database_sync_to_async(Activity.from_xml)(el)
+            else:
+                await database_sync_to_async(Activity.from_xml)(activities)
 
         organisations = await self.organisations()
         if organisations:
-            for el in organisations:
+            if isinstance(organisations, list):
+                for el in organisations:
+                    await database_sync_to_async(Organisation.from_xml)(el)
+            else:
                 await database_sync_to_async(Organisation.from_xml)(el)
 
     async def to_instances_semaphored(self, sema: asyncio.Semaphore):
