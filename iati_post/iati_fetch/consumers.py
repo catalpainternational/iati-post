@@ -49,29 +49,6 @@ class AsyncCache:
         return await sync_to_async(cache.has_key)(*args, **kwargs)
 
 
-def save_organisations(element: dict, abbreviation: str):
-    """
-    Return an Organisation model derived from an iati-organisations XML file
-    A suitable example can be found at 'https://files.transparency.org/content/download/2279/14136/file/IATI_TIS_Organisation.xml'
-    Expects to receive content as per "iati-organisations"
-    """
-    model = apps.get_model("iati_fetch", "Organisation")
-    model.from_xml(element["iati-organisation"], abbreviation)
-
-
-def save_activities(element: dict):
-    """
-    Save an 'iati-activities/iati-activity' represented in JSON to db
-    """
-    model = apps.get_model("iati_fetch", "Activity")
-    activity = element["iati-activity"]
-    if isinstance(activity, dict):
-        model.from_xml(activity)
-    else:
-        for a in activity:
-            model.from_xml(activity)
-
-
 class ResponseCacheException(Exception):
     """
     Raised when a response already exists in cache
@@ -347,16 +324,8 @@ class RequestConsumer(SyncConsumer):
         request = BaseRequest.from_event()
 
     def clear_cache(self, event):
-
-        url = event["url"]
-        params = event.get("params", {})
-        method = event.get("method", "GET")
-
-        logger.debug("Clear cache for %s request received", url)
-        rhash = request_hash(url=url, params=params, method=method)
-        if cache.has_key(rhash):
-            cache.delete(rhash)
-            return
+        request = BaseRequest.from_event()
+        cache.delete(request.rhash)
 
 
 class IatiRequestConsumer(SyncConsumer):
@@ -403,12 +372,5 @@ class IatiRequestConsumer(SyncConsumer):
         This should put the list of organisations  to
         the redis response cache
         """
-        async_to_sync(self.channel_layer.send)(
-            "request",
-            {
-                "type": "get",
-                "method": "GET",
-                "url": organisation_list_url,
-                "expected_content_type": "json",
-            },
-        )
+        organsiations = OrganisationRequestList()
+        async_to_sync(organsiations.get())
