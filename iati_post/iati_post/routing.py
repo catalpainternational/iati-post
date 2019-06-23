@@ -1,9 +1,8 @@
-from channels.routing import ProtocolTypeRouter, ChannelNameRouter, URLRouter
-from iati_fetch import consumers
+from channels.auth import AuthMiddlewareStack
+from channels.routing import ChannelNameRouter, ProtocolTypeRouter, URLRouter
 from django.conf.urls import url
 
-from channels.auth import AuthMiddlewareStack
-
+from iati_fetch import consumers
 
 application = ProtocolTypeRouter(
     {
@@ -16,4 +15,3 @@ application = ProtocolTypeRouter(
         )
     }
 )
-

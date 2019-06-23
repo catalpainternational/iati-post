@@ -26,12 +26,14 @@ def make_hashable(o):
     return o
 
 
-def request_hash(params: dict=None, url: str='www.example.com', method: str = "GET", **kwargs):
+def request_hash(
+    params: dict = None, url: str = "www.example.com", method: str = "GET", **kwargs
+):
     dict_to_hash = {"__url__": url, "__method__": method}
     if params:
         dict_to_hash.update(params)
     rhash = make_hashable(dict_to_hash)
-    logger.debug('Hash generated: %s -> %s', dict_to_hash, rhash)
+    logger.debug("Hash generated: %s -> %s", dict_to_hash, rhash)
     return rhash
 
 

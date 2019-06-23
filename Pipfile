@@ -22,6 +22,9 @@ channels = "*"
 channels_redis = "*"
 diskcache = "*"
 aiohttp = "*"
+jsonpath-rw = "*"
+jsonpath-ng = "*"
+jsonpath-rw-ext = "*"
 
 [requires]
 python_version = "3.7"
