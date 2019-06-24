@@ -104,8 +104,11 @@ class BaseRequest:
             return response, response_text
         else:
             async with ClientSession(connector=TCPConnector(ssl=False)) as session:
-                response, response_text = await self._request(session)
-                return response, response_text
+                try:
+                    response, response_text = await self._request(session)
+                    return response, response_text
+                except aiohttp.client_exceptions.ClientConnectorError as e:
+                    logger.warn("Connection error: %s", e)
 
     async def get(self, refresh=False, cache=True):
 
@@ -114,16 +117,27 @@ class BaseRequest:
         # Return from cache
         if has_key:
             if not refresh:
-                logger.debug("Cache: response returned %s", self.url)
+                logger.debug(
+                    "Cache: response returned %s %s %s",
+                    self.method,
+                    self.url,
+                    self.params,
+                )
                 response_text = await AsyncCache.get(self.rhash)
+                if self.expected_type == "json" and isinstance(response_text, str):
+                    response_text = json.loads(response_text)
+                    assert isinstance(response_text, dict) or isinstance(
+                        response_text, list
+                    )
                 return response_text
             logger.debug("Cache: response dropped %s", self.url)
             await self.drop()
-        response, response_text = await self._fetch()
-        if cache:
-            await AsyncCache.set(self.rhash, response_text)
-            logger.debug("Cache: response saved %s", self.url)
-        return response_text
+        else:
+            response, response_text = await self._fetch()
+            if cache:
+                await AsyncCache.set(self.rhash, response_text)
+                logger.debug("Cache: response saved %s", self.url)
+            return response_text
 
     async def bound_get(self, sema, wait=0):
         """

@@ -81,17 +81,16 @@ class Activity(models.Model):
 
     @classmethod
     def from_xml(cls, activity_element: dict) -> Tuple[Activity, bool]:
-        
+
         # Handle nested lists of activities
         if isinstance(activity_element, list):
             for child_element in activity_element:
                 cls.from_xml(child_element)
 
-        elif 'iati-identifier' not in activity_element:
-            logger.error('Invalid activity element: %s', str(activity_element)[:200])
-            print(activity_element)
-            raise KeyError('Wrong type for activity element - no iati-identifier key')
-        
+        elif "iati-identifier" not in activity_element:
+            logger.error("Invalid activity element: %s", str(activity_element)[:200])
+            raise KeyError("Wrong type for activity element - no iati-identifier key")
+
         else:
             act, created = cls.objects.get_or_create(
                 pk=activity_element["iati-identifier"],

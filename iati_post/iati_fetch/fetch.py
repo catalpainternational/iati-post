@@ -69,7 +69,6 @@ async def organisation_json(name: str = "1-uz"):
         record, created = await create_or_update_request_source(
             name, package_search_url, json.dumps(json_content)
         )
-    print(record.json)
     return record
 
 

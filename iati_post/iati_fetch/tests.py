@@ -13,15 +13,18 @@ class RequestsTestCase(TestCase):
     def test_organisation_list(self):
         """We can fetch the list of organisations. We understand the returned format."""
         l = consumers.OrganisationRequestList()
-        result = async_to_sync(l.get)(refresh=True)
+        result = async_to_sync(l.get)(refresh=False)
         self.assertTrue(isinstance(result["result"], list))
+        """From cache ought to return the same result"""
+        result_again = async_to_sync(l.get)(refresh=False)
+        self.assertTrue(isinstance(result_again["result"], list))
 
     def test_fetch_organisation(self):
         """
         We can fetch an organisation's details
         """
         l = consumers.OrganisationRequestDetail(organisation_handle="ask")
-        result = async_to_sync(l.get)(refresh=True)
+        result = async_to_sync(l.get)(refresh=False)
         self.assertTrue(isinstance(result, dict))
 
     @async_to_sync
@@ -52,7 +55,7 @@ class RequestsTestCase(TestCase):
         """
         url = "https://aidstream.org/files/xml/ask-org.xml"
         l = consumers.IatiXMLRequest(url=url)
-        result = async_to_sync(l.get)(refresh=True)
+        result = async_to_sync(l.get)(refresh=False)
         organisation = async_to_sync(l.organisations)()
 
     def test_activities_xml(self):
@@ -61,9 +64,8 @@ class RequestsTestCase(TestCase):
         """
         url = "https://aidstream.org/files/xml/ask-activities.xml"
         l = consumers.IatiXMLRequest(url=url)
-        result = async_to_sync(l.get)(refresh=True)
+        result = async_to_sync(l.get)(refresh=False)
         activities = async_to_sync(l.activities)()
-        print(activities)
 
     def test_save_one_activity(self):
         import json
@@ -98,4 +100,3 @@ class RequestsTestCase(TestCase):
         async with ClientSession(connector=TCPConnector(ssl=False)) as session:
             coros = [i.get() for i in url_list.values()]
             responses = await asyncio.gather(*coros)
-            print(responses)

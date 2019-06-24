@@ -138,18 +138,16 @@ CHANNEL_LAYERS = {
 }
 
 CACHES = {
-    'default': {
-        'BACKEND': 'diskcache.DjangoCache',
-        'LOCATION': os.path.join(BASE_DIR, 'disk_cache'),
-        'TIMEOUT': 86400,
+    "default": {
+        "BACKEND": "diskcache.DjangoCache",
+        "LOCATION": os.path.join(BASE_DIR, "disk_cache"),
+        "TIMEOUT": 86400,
         # ^-- Django setting for default timeout of each key.
-        'SHARDS': 8,
-        'DATABASE_TIMEOUT': 0.050,  # 10 milliseconds
+        "SHARDS": 8,
+        "DATABASE_TIMEOUT": 0.050,  # 10 milliseconds
         # ^-- Timeout for each DjangoCache database transaction.
-        'OPTIONS': {
-            'size_limit': 2 ** 30 * 10   # 10 gigabytes
-        },
-    },
+        "OPTIONS": {"size_limit": 2 ** 30 * 10},  # 10 gigabytes
+    }
 }
 try:
     from .local_settings import *
