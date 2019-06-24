@@ -7,6 +7,7 @@ from typing import Dict, List, Mapping
 
 import jsonpath_rw_ext as jp
 import xmltodict
+
 from aiohttp import ClientSession, TCPConnector
 from asgiref.sync import async_to_sync, sync_to_async
 from channels.consumer import AsyncConsumer, SyncConsumer
@@ -16,6 +17,7 @@ from django.apps import apps
 from django.conf import settings
 from django.core.cache import cache
 from django.utils.functional import cached_property
+from aiohttp.client_exceptions import ClientConnectorError
 
 from iati_fetch.make_hashable import request_hash
 from iati_fetch.models import Activity, Organisation
@@ -107,7 +109,7 @@ class BaseRequest:
                 try:
                     response, response_text = await self._request(session)
                     return response, response_text
-                except aiohttp.client_exceptions.ClientConnectorError as e:
+                except ClientConnectorError as e:
                     logger.warn("Connection error: %s", e)
 
     async def get(self, refresh=False, cache=True):
@@ -372,6 +374,25 @@ class EchoConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data=None, bytes_data=None):
         await self.send(text_data=text_data + " world!")
+
+    async def disconnect(self, close_code):
+        await self.close()
+
+
+
+from channels.layers import get_channel_layer
+
+channel_layer = get_channel_layer()
+
+class FetchUrl(AsyncWebsocketConsumer):
+
+    async def connect(self):
+        await self.accept()
+
+    async def receive(self, text_data=None, bytes_data=None):
+        request = BaseRequest(url='http://example.com')
+        response_text = await request.get()
+        await self.send(text_data=response_text)
 
     async def disconnect(self, close_code):
         await self.close()
