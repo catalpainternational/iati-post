@@ -362,22 +362,16 @@ class IatiRequestConsumer(AsyncConsumer):
         await orgs.get()
 
 
-from channels.consumer import AsyncConsumer
+from channels.generic.websocket import AsyncWebsocketConsumer
 
-class EchoConsumer(AsyncConsumer):
 
-    async def websocket_connect(self, event):
-        await self.send({
-            "type": "websocket.accept",
-        })
+class EchoConsumer(AsyncWebsocketConsumer):
 
-    async def websocket_receive(self, event):
-        await self.send({
-            "type": "websocket.send",
-            "text": event["text"] + ' world',
-        })
-    
-    async def websocket_disconnect(self, event):
-        await self.send({
-            "type": "websocket.disconnect",
-        })
+    async def connect(self):
+        await self.accept()
+
+    async def receive(self, text_data=None, bytes_data=None):
+        await self.send(text_data=text_data + " world!")
+
+    async def disconnect(self, close_code):
+        await self.close()
