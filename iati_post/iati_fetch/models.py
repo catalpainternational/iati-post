@@ -1,110 +1,102 @@
-from django.db import models
+from __future__ import annotations
+
+import json
+import logging
+import time
+from typing import Tuple
+
 from asgiref.sync import async_to_sync
-from . import fetch
+from channels.layers import get_channel_layer
 from django.contrib.postgres.fields import HStoreField, JSONField
+from django.core.cache import cache
+from django.db import models
 from django.utils.functional import cached_property
-from lxml import etree
+
+from . import fetch
+from .make_hashable import request_hash
+
+logger = logging.getLogger(__name__)
+
+
+def wait_for_cache(rhash):
+    """
+    Primitive cache checker for an async cache putter in another thread
+    """
+    try_num = 0
+    sent = False
+    while not cache.has_key(rhash):
+        try_num += 1
+        timeout = 2 ** try_num / 10
+        logger.debug("waiting %s seconds", timeout)
+        time.sleep(timeout)
+    return cache.get(rhash)
 
 
 class Organisation(models.Model):
-    id = models.TextField(primary_key=True)
+    """
+    Helper functions
+
+    Organisation.refresh()
+    This will trigger a call to the IATI API to cache a list of organisations
+
+    """
+
+    id = models.TextField(
+        primary_key=True
+    )  # This is the IATI identifier for an organisation
+    abbreviation = models.TextField(
+        null=True
+    )  # This is the abbreviation for a "lookup" in the IATI system
+    element = JSONField(null=True)  # This is the <iati-organisation> tag as JSON
 
     def __str__(self):
         return self.id
 
     @classmethod
-    def fetch(cls):
-        """
-        Trigger a fetch of all Organisation
-        objects
-        """
-        async_to_sync(fetch.organisation_list)()
-        return cls.objects.all()
+    def from_xml(cls, organisation_element: dict, abbr: str = None):
 
-    def _request_json(self):
-        try:
-            return RequestSource.objects.get(
-                params__fq=f"organization:{self.pk}",
-                url=url,
-                defaults={"expected_content_type": "json"},
-            )
-        except RequestSource.DoesNotExist:
-            return None
+        if isinstance(organisation_element, list):
+            for child_element in organisation_element:
+                return cls.from_xml(child_element)
+            return
 
-    def json_request_parameters(self) -> dict:
-        """
-        Return the URL and parameters for a search of this organisation's data
-        This should basically provide input suitable for a RequestSource
-        """
-
-        return {
-            "method": "GET",
-            "url": fetch.organisation_list_url,
-            "params": {"fq": f"organization:{self.pk}"},
-            "expected_content_type": "json",
-        }
-
-    def get_json_request_source(self) -> ("RequestSource", bool):
-        """
-        Get or Create a RequestSource object for the JSON relating to this organisation
-        """
-        return RequestSource.objects.get_or_create(**self.json_request_parameters())
-
-    def fetchjson(self):
-        """
-        Fetch a listing of all this organisation's XML files
-        as a RequestSource object
-        """
-        return async_to_sync(fetch.organisation_json)(self.id)
-
-    def fetchxml(self):
-        """
-        Trigger a listing of all this organisation's XML files
-        """
-        return async_to_sync(fetch.organisation_xml)(self.id)
-
-
-class RequestSource(models.Model):
-    """
-    Acts as a cache and processing hub for any requests made, particularly for XML extraction
-    """
-
-    class Meta:
-        unique_together = (("method", "params", "url"),)
-
-    METHOD_CHOICES = (("GET", "GET"), ("POST", "POST"))
-    EXPECTED_CONTENT_CHOICES = (("json", "json"), ("xml", "xml"), ("html", "html"))
-
-    method = models.CharField(max_length=6, choices=METHOD_CHOICES, default="GET")
-    params = HStoreField(null=True)
-    url = models.URLField()
-    expected_content_type = models.CharField(
-        max_length=6,
-        choices=EXPECTED_CONTENT_CHOICES,
-        default="html",
-        null=True,
-        blank=True,
-    )
-
-    success = models.NullBooleanField(default=None, null=True, blank=True)
-
-    html = models.TextField(null=True, blank=True)
-    json = JSONField(null=True, blank=True)
-    xml = models.TextField(
-        null=True, blank=True
-    )  # Actually this is going to be an XML field
-
-    def __str__(self):
-        return f"{self.url}"
-
-    @cached_property
-    def __etree(self) -> etree._Element:
-        if not self.xml:
-            return None
-        return etree.fromstring(self.xml)
-
-    def fetch(self):
-        raise NotImplementedError(
-            "This is to be implemented as an async task. For now, call relevant functions in fetch.py"
+        name = organisation_element["name"]["narrative"]
+        id = organisation_element["organisation-identifier"]
+        o, _created = cls.objects.get_or_create(
+            id=id, defaults=dict(element=organisation_element, abbreviation=abbr)
         )
+        if not _created:
+            o.iatiorganisation = organisation_element
+            o.abbreviation = abbr
+            o.save()
+        return o
 
+
+class Activity(models.Model):
+
+    identifier = models.TextField(primary_key=True)
+    element = (
+        JSONField()
+    )  # We will use 'xmltodict' to convert an activity into JSON data
+
+    @classmethod
+    def from_xml(cls, activity_element: dict) -> Tuple[Activity, bool]:
+
+        # Handle nested lists of activities
+        if isinstance(activity_element, list):
+            for child_element in activity_element:
+                cls.from_xml(child_element)
+
+        elif "iati-identifier" not in activity_element:
+            logger.error("Invalid activity element: %s", str(activity_element)[:200])
+            raise KeyError("Wrong type for activity element - no iati-identifier key")
+
+        else:
+            act, created = cls.objects.get_or_create(
+                pk=activity_element["iati-identifier"],
+                defaults=dict(element=dict(activity_element)),
+            )
+            if not created:
+                act.element = activity_element
+                act.save()
+            return act, created

@@ -69,7 +69,6 @@ async def organisation_json(name: str = "1-uz"):
         record, created = await create_or_update_request_source(
             name, package_search_url, json.dumps(json_content)
         )
-    print(record.json)
     return record
 
 
@@ -145,7 +144,6 @@ async def organisation_xml(name: str = "1-uz", refresh_all: bool = False):
 async def organisation_list():
     """
     Fetches the list of IATI organisations.
-    Populates a RequestSource object with that.
     Creates 'Organisation' objects if they do not exist yet.
     """
 
