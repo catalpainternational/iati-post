@@ -290,12 +290,9 @@ class IatiXMLRequest(XMLRequest):
         Write to Django models
         """
         activities = await self.activities()
-        if activities:
-            if isinstance(activities, list):
-                for el in activities:
-                    await database_sync_to_async(Activity.from_xml)(el)
-            else:
-                await database_sync_to_async(Activity.from_xml)(activities)
+
+        # from_xml ought to handle nested activity cases
+        await database_sync_to_async(Activity.from_xml)(activities)
 
         organisations = await self.organisations()
         if organisations:
