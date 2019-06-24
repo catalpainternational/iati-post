@@ -326,62 +326,58 @@ class RequestConsumer(SyncConsumer):
     Methods to fetch and cache URLs. Will cache contents of the given URL under a key composed of the URL and parameters.
     """
 
-    def get(self, event):
+    async def get(self, event):
         """
         Simple fetcher for a URL.
         Returns cache content if there is a request hash; otherwise fetches to the cache
         and sends an 'ok' message
         """
         request = BaseRequest.from_event()
+        await request.get()
 
-    def clear_cache(self, event):
+    async def clear_cache(self, event):
         request = BaseRequest.from_event()
-        cache.delete(request.rhash)
+        await request.drop()
 
 
-class IatiRequestConsumer(SyncConsumer):
+class IatiRequestConsumer(AsyncConsumer):
     """
     Fetch and cache IATI-related URLS
     """
 
-    def parse_xml(self, event):
+    async def parse_xml(self, event):
         """
         Read an IATI xml file from cache and attempt to populate Organisation(s) / Activit[y/ies] from it
             async_to_sync(get_channel_layer().send)('iati', {'type': 'parse_xml', 'url': 'https://files.transparency.org/content/download/2279/14136/file/IATI_TIS_Organisation.xml'})
         """
-        url = event["url"]
+        url = IatiXMLRequest(event["url"])
+        await event.to_instances()
 
-        rhash = request_hash(url=url)
-        request_text = cache.get(rhash)
-
-        if not request_text:
-            request = fetch(url=url)
-            request_text = cache.get(rhash)
-
-        if not request_text:
-            logger.error("Empty request")
-            return
-
-        try:
-            request_as_json = xmltodict.parse(request_text)
-        except:
-            raise
-            logger.error("Badly formed XML")
-            logger.error(request_text[150])
-            return
-
-        if "iati-organisations" in request_as_json:
-            save_organisations(
-                request_as_json["iati-organisations"],
-                abbreviation=event.get("abbreviation", None),
-            )
-        if "iati-activities" in request_as_json:
-            save_activities(request_as_json["iati-activities"])
-
-    def organisation_list_fetch(self, event):
+    async def organisation_list_fetch(self, _):
         """
         This should put the list of organisations  to
         the redis response cache
         """
-        organsiations = OrganisationRequestList()
-        async_to_sync(organsiations.get())
+        orgs = OrganisationRequestList()
+        await orgs.get()
+
+
+from channels.consumer import AsyncConsumer
+
+class EchoConsumer(AsyncConsumer):
+
+    async def websocket_connect(self, event):
+        await self.send({
+            "type": "websocket.accept",
+        })
+
+    async def websocket_receive(self, event):
+        await self.send({
+            "type": "websocket.send",
+            "text": event["text"] + ' world',
+        })
+    
+    async def websocket_disconnect(self, event):
+        await self.send({
+            "type": "websocket.disconnect",
+        })

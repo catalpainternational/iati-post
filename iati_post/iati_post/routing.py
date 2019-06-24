@@ -12,6 +12,11 @@ application = ProtocolTypeRouter(
                 "request": consumers.RequestConsumer,
                 "iati": consumers.IatiRequestConsumer,
             }
-        )
+        ),
+        "websocket": AuthMiddlewareStack(
+            URLRouter([
+                url(r"^echo/$", consumers.EchoConsumer),
+            ])
+        ),
     }
 )

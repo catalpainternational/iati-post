@@ -4,7 +4,7 @@ from aiohttp import ClientSession, TCPConnector
 from asgiref.sync import async_to_sync
 from django.test import TestCase
 
-from . import consumers
+from iati_fetch import consumers
 
 # Create your tests here.
 
