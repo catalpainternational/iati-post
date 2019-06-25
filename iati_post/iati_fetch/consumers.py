@@ -1,23 +1,18 @@
 import asyncio
 import json
 import logging
-import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Mapping
 
 import jsonpath_rw_ext as jp
 import xmltodict
-
 from aiohttp import ClientSession, TCPConnector
-from asgiref.sync import async_to_sync, sync_to_async
+from aiohttp.client_exceptions import ClientConnectorError
+from asgiref.sync import sync_to_async
 from channels.consumer import AsyncConsumer, SyncConsumer
 from channels.db import database_sync_to_async
-from channels.generic.websocket import WebsocketConsumer
-from django.apps import apps
-from django.conf import settings
+from channels.generic.websocket import AsyncWebsocketConsumer
 from django.core.cache import cache
-from django.utils.functional import cached_property
-from aiohttp.client_exceptions import ClientConnectorError
 
 from iati_fetch.make_hashable import request_hash
 from iati_fetch.models import Activity, Organisation
@@ -81,7 +76,7 @@ class BaseRequest:
         self.rhash = request_hash(**self.session_params)
 
     @classmethod
-    def from_event(cls):
+    def from_event(cls, event):
         """
         From a "channels" event with a url, method, params; create a Request object
         """
@@ -112,9 +107,9 @@ class BaseRequest:
                 except ClientConnectorError as e:
                     logger.warn("Connection error: %s", e)
 
-    async def get(self, refresh=False, cache=True):
+    async def get(self, session=None, refresh=False, cache=True):
 
-        has_key = await AsyncCache.has_key(self.rhash)
+        has_key = await AsyncCache.has_key(self.rhash)  # noqa
 
         # Return from cache
         if has_key:
@@ -135,32 +130,26 @@ class BaseRequest:
             logger.debug("Cache: response dropped %s", self.url)
             await self.drop()
         else:
-            response, response_text = await self._fetch()
+            response, response_text = await self._fetch(session=session)
             if cache:
                 await AsyncCache.set(self.rhash, response_text)
                 logger.debug("Cache: response saved %s", self.url)
             return response_text
 
-    async def bound_get(self, sema, wait=0):
+    async def bound_get(self, sema, session=None, wait=0):
         """
         Wrap self.get with a semaphore; allow a wait if desired
         """
         if wait:
             await asyncio.sleep(wait)
         async with sema:
-            await self.get()
+            await self.get(session=session)
 
     def drop_sync(self):
         cache.delete(self.rhash)
 
     async def drop(self):
         await AsyncCache.delete(self.rhash)
-
-    async def cache_response(self, response):
-        rhash = await self.rhash
-        AsyncCache.set(rhash, response_text)
-        logger.debug("Saved response len %s to %s", len(response_text), rhash)
-        return rhash
 
 
 @dataclass
@@ -226,16 +215,15 @@ class OrganisationRequestDetail(JSONRequest):
 
         assert isinstance(organisations, list)
 
-        sem = asyncio.Semaphore(
-            200
-        )  # Limit parallel requests avoiding an OSError: too many open files
+        # Limit parallel requests avoiding an OSError: too many open files
+        sem = asyncio.Semaphore(200)
         async with ClientSession(connector=TCPConnector(ssl=False)) as session:
             tasks = []
             for abbr in organisations:
                 instance = cls(organisation_handle=abbr)
-                tasks.append(instance.bound_get(sem))
+                tasks.append(instance.bound_get(sem, session=session))
 
-            responses = await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks)
 
     @classmethod
     async def xml_requests_get(cls, organisations: list = None):
@@ -254,9 +242,9 @@ class OrganisationRequestDetail(JSONRequest):
                 instance = cls(organisation_handle=abbr)
                 xml_requests = await instance.iati_xml_requests()
                 for request in xml_requests:
-                    tasks.append(request.bound_get(sem))
+                    tasks.append(request.bound_get(sem, session=session))
 
-            responses = await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks)
 
     @classmethod
     async def xml_requests_process(cls, organisations: list = None):
@@ -265,17 +253,15 @@ class OrganisationRequestDetail(JSONRequest):
             organisations = await orl.to_list()
 
         assert isinstance(organisations, list)
-
         sem = asyncio.Semaphore(5)
-        async with ClientSession(connector=TCPConnector(ssl=False)) as session:
-            tasks = []
-            for abbr in organisations:
-                instance = cls(organisation_handle=abbr)
-                xml_requests = await instance.iati_xml_requests()
-                for request in xml_requests:
-                    tasks.append(request.to_instances_semaphored(sem))
+        tasks = []
+        for abbr in organisations:
+            instance = cls(organisation_handle=abbr)
+            xml_requests = await instance.iati_xml_requests()
+            for request in xml_requests:
+                tasks.append(request.to_instances_semaphored(sem))
 
-            responses = await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks)
 
 
 @dataclass
@@ -325,13 +311,15 @@ class IatiXMLRequest(XMLRequest):
 
 class RequestConsumer(SyncConsumer):
     """
-    Methods to fetch and cache URLs. Will cache contents of the given URL under a key composed of the URL and parameters.
+    Methods to fetch and cache URLs. Will cache contents
+    of the given URL under a key composed of the URL and parameters.
     """
 
     async def get(self, event):
         """
         Simple fetcher for a URL.
-        Returns cache content if there is a request hash; otherwise fetches to the cache
+        Returns cache content if there is a request hash;
+        otherwise fetches to the cache
         and sends an 'ok' message
         """
         request = BaseRequest.from_event()
@@ -349,11 +337,17 @@ class IatiRequestConsumer(AsyncConsumer):
 
     async def parse_xml(self, event):
         """
-        Read an IATI xml file from cache and attempt to populate Organisation(s) / Activit[y/ies] from it
-            async_to_sync(get_channel_layer().send)('iati', {'type': 'parse_xml', 'url': 'https://files.transparency.org/content/download/2279/14136/file/IATI_TIS_Organisation.xml'})
+        Read an IATI xml file from cache and attempt to populate 
+        Organisation(s) / Activit[y/ies] from it
+            async_to_sync(get_channel_layer().send)(
+                'iati', {
+                    'type': 'parse_xml',
+                    'url': 'https://files.transparency.org/content/download/2279/14136/file/IATI_TIS_Organisation.xml'  # noqa
+                    }
+                )
         """
         url = IatiXMLRequest(event["url"])
-        await event.to_instances()
+        await url.to_instances()
 
     async def organisation_list_fetch(self, _):
         """
@@ -364,11 +358,7 @@ class IatiRequestConsumer(AsyncConsumer):
         await orgs.get()
 
 
-from channels.generic.websocket import AsyncWebsocketConsumer
-
-
 class EchoConsumer(AsyncWebsocketConsumer):
-
     async def connect(self):
         await self.accept()
 
@@ -379,18 +369,12 @@ class EchoConsumer(AsyncWebsocketConsumer):
         await self.close()
 
 
-
-from channels.layers import get_channel_layer
-
-channel_layer = get_channel_layer()
-
 class FetchUrl(AsyncWebsocketConsumer):
-
     async def connect(self):
         await self.accept()
 
     async def receive(self, text_data=None, bytes_data=None):
-        request = BaseRequest(url='http://example.com')
+        request = BaseRequest(url="http://example.com")
         response_text = await request.get()
         await self.send(text_data=response_text)
 

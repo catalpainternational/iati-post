@@ -1,5 +1,4 @@
 from django.apps import apps
-from django.shortcuts import redirect
 from django.views.generic import TemplateView, View
 
 # Create your views here.
@@ -30,29 +29,19 @@ class OrganisationDetail(TemplateView):
 
 class OrganisationFetchXml(View):
     def get(self, request, organisation_id):
-        organisation = apps.get_model("iati_fetch", "Organisation").objects.get(
-            pk=organisation_id
-        )
-        links = organisation.fetchxml()
-        return redirect("iati-fetch:org-detail", organisation_id=organisation_id)
+        raise NotImplementedError
 
 
 class OrganisationFetchJson(View):
     def get(self, request, organisation_id):
-        organisation = apps.get_model("iati_fetch", "Organisation").objects.get(
-            pk=organisation_id
-        )
-        links = organisation.fetchjson()
-        return redirect("iati-fetch:org-detail", organisation_id=organisation_id)
+        raise NotImplementedError
 
 
 class OrganisationRefresh(View):
     def get(self, request):
-        apps.get_model("iati_fetch", "Organisation").fetch()
-        return redirect("iati-fetch:orgs")
+        raise NotImplementedError
 
 
 class OrganisationDelete(TemplateView):
     def get(self, request):
-        apps.get_model("iati_fetch", "Organisation").objects.all().delete()
-        return redirect("iati-fetch:orgs")
+        raise NotImplementedError

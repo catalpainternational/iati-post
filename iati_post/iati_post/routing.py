@@ -14,10 +14,12 @@ application = ProtocolTypeRouter(
             }
         ),
         "websocket": AuthMiddlewareStack(
-            URLRouter([
-                url(r"^echo/$", consumers.EchoConsumer),
-                url(r"^fetchurl/$", consumers.FetchUrl),
-            ])
+            URLRouter(
+                [
+                    url(r"^echo/$", consumers.EchoConsumer),
+                    url(r"^fetchurl/$", consumers.FetchUrl),
+                ]
+            )
         ),
     }
 )

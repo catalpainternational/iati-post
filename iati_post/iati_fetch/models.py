@@ -1,45 +1,15 @@
 from __future__ import annotations
 
-import json
 import logging
-import time
 from typing import Tuple
 
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
-from django.contrib.postgres.fields import HStoreField, JSONField
-from django.core.cache import cache
+from django.contrib.postgres.fields import JSONField
 from django.db import models
-from django.utils.functional import cached_property
-
-from . import fetch
-from .make_hashable import request_hash
 
 logger = logging.getLogger(__name__)
 
 
-def wait_for_cache(rhash):
-    """
-    Primitive cache checker for an async cache putter in another thread
-    """
-    try_num = 0
-    sent = False
-    while not cache.has_key(rhash):
-        try_num += 1
-        timeout = 2 ** try_num / 10
-        logger.debug("waiting %s seconds", timeout)
-        time.sleep(timeout)
-    return cache.get(rhash)
-
-
 class Organisation(models.Model):
-    """
-    Helper functions
-
-    Organisation.refresh()
-    This will trigger a call to the IATI API to cache a list of organisations
-
-    """
 
     id = models.TextField(
         primary_key=True
@@ -59,11 +29,9 @@ class Organisation(models.Model):
             for child_element in organisation_element:
                 return cls.from_xml(child_element)
             return
-
-        name = organisation_element["name"]["narrative"]
-        id = organisation_element["organisation-identifier"]
+        pk = organisation_element["organisation-identifier"]
         o, _created = cls.objects.get_or_create(
-            id=id, defaults=dict(element=organisation_element, abbreviation=abbr)
+            pk=pk, defaults=dict(element=organisation_element, abbreviation=abbr)
         )
         if not _created:
             o.iatiorganisation = organisation_element
@@ -75,9 +43,7 @@ class Organisation(models.Model):
 class Activity(models.Model):
 
     identifier = models.TextField(primary_key=True)
-    element = (
-        JSONField()
-    )  # We will use 'xmltodict' to convert an activity into JSON data
+    element = (JSONField())
 
     @classmethod
     def from_xml(cls, activity_element: dict) -> Tuple[Activity, bool]:

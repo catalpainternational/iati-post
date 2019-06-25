@@ -4,6 +4,7 @@ import logging
 from aiohttp import ClientSession, TCPConnector
 from channels.db import database_sync_to_async
 from django.apps import apps
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -95,10 +96,9 @@ async def organisation_xml(name: str = "1-uz", refresh_all: bool = False):
         return request_urls_to_fetch
 
     @database_sync_to_async
-    def fetch_url_list_for_organisation(RequestSource_json: str) -> list:
+    def fetch_url_list_for_organisation(RequestSource_json: str) -> List[str]:
         urls = []
         logger.debug("Parsing organisation resources list")
-        request_urls_to_fetch = []
         for result in json.loads(RequestSource_json)["result"]["results"]:
             for resource in result["resources"]:
                 model = apps.get_model("iati_fetch", "RequestSource")
