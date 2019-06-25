@@ -49,6 +49,13 @@ async_to_sync(get_channel_layer().send)('request',{'type': 'get'})
 async_to_sync(get_channel_layer().send)('iati', {'type': 'parse_xml', 'url': 'https://ngoaidmap.org/iati/organizations/225'})
 ```
 
+
+### Tests
+
+Just run `pytest`
+
+
+
 ### Jupyter Lab
 
 See [here](https://stackoverflow.com/questions/35483328/how-to-setup-jupyter-ipython-notebook-for-django/52214033#52214033)
