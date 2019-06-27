@@ -100,3 +100,11 @@ class RequestsTestCase(TestCase):
         async with ClientSession(connector=TCPConnector(ssl=False)) as session:
             coros = [i.get(session=session) for i in url_list.values()]
             await asyncio.gather(*coros)
+
+    @async_to_sync
+    async def test_fetch_codelists(self):
+        """
+        Test that we can populate a lookup table with IATI codelists
+        and items
+        """
+        await consumers.IatiCodelistListRequest().to_instances()

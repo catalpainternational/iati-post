@@ -16,6 +16,7 @@ application = ProtocolTypeRouter(
         "websocket": AuthMiddlewareStack(
             URLRouter(
                 [
+                    url(r"^iati/$", consumers.IatiConsumer),
                     url(r"^echo/$", consumers.EchoConsumer),
                     url(r"^fetchurl/$", consumers.FetchUrl),
                 ]

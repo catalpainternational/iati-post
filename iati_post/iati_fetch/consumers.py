@@ -9,13 +9,14 @@ import xmltodict
 from aiohttp import ClientSession, TCPConnector
 from aiohttp.client_exceptions import ClientConnectorError
 from asgiref.sync import sync_to_async
+from bs4 import BeautifulSoup
 from channels.consumer import AsyncConsumer, SyncConsumer
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.core.cache import cache
 
 from iati_fetch.make_hashable import request_hash
-from iati_fetch.models import Activity, Organisation
+from iati_fetch.models import Activity, Codelist, Organisation
 
 logger = logging.getLogger(__name__)
 
@@ -95,11 +96,14 @@ class BaseRequest:
                     "not caching due to a non 200: %s", response.status
                 )
 
-    async def _fetch(self, session=None):
+    async def _fetch(self, session: ClientSession = None):
         if session:
             response, response_text = await self._request(session)
             return response, response_text
         else:
+            logger.info(
+                "Potentially poor performance: Using a session for a single request might not be what you want"  # noqa
+            )
             async with ClientSession(connector=TCPConnector(ssl=False)) as session:
                 try:
                     response, response_text = await self._request(session)
@@ -309,6 +313,55 @@ class IatiXMLRequest(XMLRequest):
             await self.to_instances()
 
 
+@dataclass
+class IatiCodelistDetailRequest(XMLRequest):
+    async def to_instances(self):
+        as_json = await self.to_json()
+        await database_sync_to_async(Codelist.from_dict)(element=as_json)
+
+
+@dataclass
+class IatiCodelistListRequest(BaseRequest):
+    url: str = "http://reference.iatistandard.org/203/codelists/downloads/clv3/xml/"
+
+    async def _process_links(self) -> List[str]:
+        """
+        Fetch list of all IATI-vocabulary XML files
+        """
+        xml_refs = []
+        got = await self.get()
+        soup = BeautifulSoup(got, features="html.parser")
+        for link in soup.find_all("a", href=True):
+            href = link["href"]
+            if href.endswith("xml"):
+                xml_refs.append(self.url + href)
+        return xml_refs
+
+    async def _xml_requests(self) -> List[XMLRequest]:
+        """
+        Fetch 'XMLRequest' objects for all the links
+        """
+        xml_files = await self._process_links()
+        return [IatiCodelistDetailRequest(url=x) for x in xml_files]
+
+    async def _fetch_links(self) -> List[XMLRequest]:
+        """
+        Cache all of the xml files found on the page with a single Session object
+        """
+        async with ClientSession() as session:
+            xml_requests = await self._xml_requests()
+            await asyncio.gather(*[r.get(session=session) for r in xml_requests])
+
+        return xml_requests
+
+    async def to_instances(self):
+        """
+        Save as "Codelist" items
+        """
+        requests = await self._fetch_links()
+        await asyncio.gather(*[r.to_instances() for r in requests])
+
+
 class RequestConsumer(SyncConsumer):
     """
     Methods to fetch and cache URLs. Will cache contents
@@ -377,6 +430,34 @@ class FetchUrl(AsyncWebsocketConsumer):
         request = BaseRequest(url="http://example.com")
         response_text = await request.get()
         await self.send(text_data=response_text)
+
+    async def disconnect(self, close_code):
+        await self.close()
+
+
+class IatiConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        await self.accept()
+
+    async def receive(self, text_data=None, bytes_data=None):
+        request = OrganisationRequestList()
+        response_text = await request.get()
+        await self.send(text_data=json.dumps(response_text))
+
+    async def disconnect(self, close_code):
+        await self.close()
+
+
+class IatiActivitiesConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        await self.accept()
+
+    async def receive(self, text_data=None, bytes_data=None):
+        request = IatiXMLRequest(
+            url="https://aidstream.org/files/xml/ask-activities.xml"
+        )
+        response_text = await request.get()
+        await self.send(text_data=json.dumps(response_text))
 
     async def disconnect(self, close_code):
         await self.close()

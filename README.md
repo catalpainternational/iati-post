@@ -52,8 +52,14 @@ async_to_sync(get_channel_layer().send)('iati', {'type': 'parse_xml', 'url': 'ht
 
 ### Tests
 
-Just run `pytest`
+```
+(iati-post) josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pytest iati_fetch/tests/
+```
 
+With coverage:
+```
+(iati-post) josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pytest --cov=iati_post iati_fetch/tests/
+```
 
 
 ### Jupyter Lab
@@ -128,3 +134,15 @@ EDITOR=nano tmuxinator start iatipost
 
 Copy `iatipost.yml` to `~/.tmuxinator`
 This runs a shell and some handlers
+
+## Linting
+
+
+Expect no output from the following:
+```
+josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pipenv run isort -rc .
+josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pipenv run black .
+josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pipenv run flake8 .
+```
+
+Also expect all tests to pass

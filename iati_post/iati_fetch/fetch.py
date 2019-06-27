@@ -1,10 +1,10 @@
 import json
 import logging
+from typing import List
 
 from aiohttp import ClientSession, TCPConnector
 from channels.db import database_sync_to_async
 from django.apps import apps
-from typing import List
 
 logger = logging.getLogger(__name__)
 

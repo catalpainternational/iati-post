@@ -43,7 +43,7 @@ class Organisation(models.Model):
 class Activity(models.Model):
 
     identifier = models.TextField(primary_key=True)
-    element = (JSONField())
+    element = JSONField()
 
     @classmethod
     def from_xml(cls, activity_element: dict) -> Tuple[Activity, bool]:
@@ -66,3 +66,81 @@ class Activity(models.Model):
                 act.element = activity_element
                 act.save()
             return act, created
+
+
+class CodelistManager(models.Manager):
+    def names(self):
+        return self.get_queryset().values_list("element__@name", flat=True)
+
+    def get_by_name(self, name: str) -> "Codelist":
+        return self.get_queryset().get(**{"element__@name": name})
+
+
+class Codelist(models.Model):
+    """
+    IATI codelist items
+    """
+
+    element = JSONField(null=True)
+    objects = CodelistManager()
+
+    @classmethod
+    def from_dict(cls, element):
+        """
+        Takes the content of an IATI Codelist XML and adapts it
+        to suit the Codelist and CodelistItem models
+        """
+
+        # Handle some odd nesting
+        codelist = element["codelist"]
+        codelist_wrapper = codelist.pop("codelist-items")
+        codelists = codelist_wrapper["codelist-item"]
+
+        # This happens when only one element is in a list
+        if isinstance(codelists, dict):
+            codelists = [codelists]
+
+        instance, _ = cls.objects.get_or_create(element=codelist)
+        CodelistItem.objects.bulk_create(
+            [CodelistItem(element=item, codelist=instance) for item in codelists]
+        )
+        logger.debug(
+            'Codelist "%s" saved with %s items',
+            instance.element["@name"],
+            len(codelists),
+        )
+
+
+class CodelistItemManager(models.Manager):
+    def by_name(self, name):
+        return self.get_queryset().filter(**{"codelist__element__@name": name})
+
+    def withdrawn(self):
+        """
+        Returns IATI codes with a "withdrawal date" which is not null
+        """
+        return self.get_queryset().filter(
+            **{"element__@withdrawal-date__isnull": False}
+        )
+
+
+class CodelistItem(models.Model):
+    element = JSONField(null=True)
+    codelist = models.ForeignKey(Codelist, on_delete=models.CASCADE)
+    objects = CodelistItemManager()
+
+    @property
+    def name(self):
+        try:
+            narrative = self.element["name"]["narrative"]
+        except KeyError:
+            logger.warn('No "name" property could be determined')
+            return ""
+
+        if isinstance(narrative, str):
+            return narrative
+        elif isinstance(narrative, list):
+            return narrative[0]
+        else:
+            logger.warn('No "name" property could be determined')
+            return ""
