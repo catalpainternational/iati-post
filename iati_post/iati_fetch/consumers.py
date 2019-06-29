@@ -3,10 +3,11 @@ import json
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Mapping
+from xml.parsers.expat import ExpatError
 
 import jsonpath_rw_ext as jp
 import xmltodict
-from aiohttp import ClientSession, TCPConnector
+from aiohttp import ClientPayloadError, ClientSession, ClientTimeout, TCPConnector
 from aiohttp.client_exceptions import ClientConnectorError
 from asgiref.sync import sync_to_async
 from bs4 import BeautifulSoup
@@ -16,8 +17,9 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.core.cache import cache
 
 from iati_fetch.make_hashable import request_hash
-from iati_fetch.models import Activity, Codelist, Organisation
+from iati_fetch.models import Activity, ActivityFormatException, Codelist, Organisation
 
+logging.captureWarnings(True)
 logger = logging.getLogger(__name__)
 
 api_root = "https://iatiregistry.org/api/3/"
@@ -65,6 +67,10 @@ class ResponseUnsuccessfulException(Exception):
 
 @dataclass
 class BaseRequest:
+    """
+    This represents a basic http(s) request.
+    """
+
     url: str
     method: str = "GET"
     expected_type: str = "text"  # Or 'json', 'xml'
@@ -84,32 +90,36 @@ class BaseRequest:
         return cls(**event)
 
     async def _request(self, session):
-        async with session.request(**self.session_params) as response:
-            if response.status == 200:
+        try:
+            async with session.request(**self.session_params) as response:
+                try:
+                    response.raise_for_status()
+                except Exception as e:
+                    raise ResponseUnsuccessfulException(
+                        "not caching due to a non 200: %s", response.status
+                    ) from e
+
+                assert response.status == 200
                 if self.expected_type == "json":
                     response_text = await response.json()
                 else:
                     response_text = await response.text()
                 return response, response_text
-            elif response.status != 200:
-                raise ResponseUnsuccessfulException(
-                    "not caching due to a non 200: %s", response.status
-                )
+        except ClientConnectorError:
+            logger.error(f"Client broke on {self}")
+            return None, None
 
     async def _fetch(self, session: ClientSession = None):
         if session:
             response, response_text = await self._request(session)
             return response, response_text
         else:
-            logger.info(
-                "Potentially poor performance: Using a session for a single request might not be what you want"  # noqa
+            logger.warn(
+                f"{self}: Potentially poor performance: Using a session for a single request might not be what you want"  # noqa
             )
             async with ClientSession(connector=TCPConnector(ssl=False)) as session:
-                try:
-                    response, response_text = await self._request(session)
-                    return response, response_text
-                except ClientConnectorError as e:
-                    logger.warn("Connection error: %s", e)
+                response, response_text = await self._request(session)
+                return response, response_text
 
     async def get(self, session=None, refresh=False, cache=True):
 
@@ -134,7 +144,21 @@ class BaseRequest:
             logger.debug("Cache: response dropped %s", self.url)
             await self.drop()
         else:
-            response, response_text = await self._fetch(session=session)
+            try:
+                response, response_text = await self._fetch(session=session)
+            except ResponseUnsuccessfulException as e:
+                logger.error(e)
+                logger.warn("URL fetch failure %s", self)
+                return None
+            except ClientPayloadError as e:
+                logger.error(e)
+                logger.warn("ClientPayloadError %s", self)
+                return None
+            except Exception as e:
+                # Other exception types may include ClientConnectorError
+                logger.error(e)
+                raise
+                return None
             if cache:
                 await AsyncCache.set(self.rhash, response_text)
                 logger.debug("Cache: response saved %s", self.url)
@@ -190,17 +214,17 @@ class OrganisationRequestDetail(JSONRequest):
         self.params["fq"] = f"organization:{self.organisation_handle}"
         super().__post_init__()
 
-    async def iati_xml_sources(self) -> List[Dict]:
+    async def iati_xml_sources(self, session) -> List[Dict]:
         resources = []
-        got = await self.get()
+        got = await self.get(session)
         for result in got["result"]["results"]:
             for resource in result["resources"]:
                 if resource["format"] == "IATI-XML":
                     resources.append(resource)
         return resources
 
-    async def iati_xml_requests(self) -> List["IatiXMLRequest"]:
-        resources = await self.iati_xml_sources()
+    async def iati_xml_requests(self, session) -> List["IatiXMLRequest"]:
+        resources = await self.iati_xml_sources(session)
         return [IatiXMLRequest(url=resource["url"]) for resource in resources]
 
     async def result__results(self):
@@ -257,15 +281,18 @@ class OrganisationRequestDetail(JSONRequest):
             organisations = await orl.to_list()
 
         assert isinstance(organisations, list)
-        sem = asyncio.Semaphore(5)
-        tasks = []
-        for abbr in organisations:
-            instance = cls(organisation_handle=abbr)
-            xml_requests = await instance.iati_xml_requests()
-            for request in xml_requests:
-                tasks.append(request.to_instances_semaphored(sem))
+        sem = asyncio.Semaphore(200)
+        async with ClientSession(
+            connector=TCPConnector(ssl=False), timeout=ClientTimeout(total=60 * 60)
+        ) as session:
+            tasks = []
+            for abbr in organisations:
+                instance = cls(organisation_handle=abbr)
+                xml_requests = await instance.iati_xml_requests(session=session)
+                for request in xml_requests:
+                    tasks.append(request.to_instances_semaphored(sem, session=session))
 
-        await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks)
 
 
 @dataclass
@@ -275,7 +302,25 @@ class XMLRequest(BaseRequest):
         Activity objects as xmltojson'd objects
         """
         got = await self.get()
-        return xmltodict.parse(got)
+        # Xml to JSON is not always clear about whether
+        # element should be treated as a single element or a list.
+        # In any situation where you encounter issues iterating over
+        # something and find it's an unexpected type,
+        # improve handling by setting force_list to true.
+
+        force_list = {
+            "transaction",
+            "iati-activity",
+            "iati-organisation",
+            "narrative",
+            "total-budget",
+            "budget-line",
+        }
+
+        try:
+            return xmltodict.parse(got, force_list=force_list)
+        except ExpatError:
+            raise
 
     async def matches(self, getter):
         got = await self.to_json()
@@ -295,20 +340,35 @@ class IatiXMLRequest(XMLRequest):
         """
         Write to Django models
         """
-        activities = await self.activities()
-
-        # from_xml ought to handle nested activity cases
-        await database_sync_to_async(Activity.from_xml)(activities)
 
         organisations = await self.organisations()
-        if organisations:
-            if isinstance(organisations, list):
-                for el in organisations:
-                    await database_sync_to_async(Organisation.from_xml)(el)
-            else:
-                await database_sync_to_async(Organisation.from_xml)(el)
+        activities = await self.activities()
 
-    async def to_instances_semaphored(self, sema: asyncio.Semaphore):
+        if activities:
+            try:
+                await database_sync_to_async(Activity.from_xml)(activities)
+            except ActivityFormatException:
+                logger.error("Failed to import %s", activities)
+                logger.error("%s", self)
+            except (ExpatError, TypeError) as e:
+                logger.error("%s Failure on file %s", e, self)
+                pass
+
+        if organisations:
+            try:
+                await database_sync_to_async(Organisation.from_xml)(organisations)
+            except KeyError:
+                logger.error("Failed to import %s", organisations)
+                logger.error("%s", self)
+                raise
+            except (ExpatError, TypeError) as e:
+                logger.error("%s Failure on file %s", e, self)
+                pass
+
+    async def to_instances_semaphored(
+        self, sema: asyncio.Semaphore, session: ClientSession
+    ):
+        await self.get(session=session)
         async with sema:
             await self.to_instances()
 
@@ -322,6 +382,14 @@ class IatiCodelistDetailRequest(XMLRequest):
 
 @dataclass
 class IatiCodelistListRequest(BaseRequest):
+    """
+    Calls the IATI codelist endpoint so that we can fetch all of the codelist XML files
+
+    IATI publishes its codelists in 3 formats: XML, JSON, and  CSV.
+    XML is "canonical" and includes all data. Past experience has shown that
+    the JSON data misses attributes (ie "withdrawn" status.)
+    """
+
     url: str = "http://reference.iatistandard.org/203/codelists/downloads/clv3/xml/"
 
     async def _process_links(self) -> List[str]:
@@ -352,7 +420,7 @@ class IatiCodelistListRequest(BaseRequest):
             xml_requests = await self._xml_requests()
             await asyncio.gather(*[r.get(session=session) for r in xml_requests])
 
-        return xml_requests
+            return xml_requests
 
     async def to_instances(self):
         """

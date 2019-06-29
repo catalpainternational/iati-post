@@ -4,7 +4,7 @@ import logging
 from typing import Tuple
 
 from django.contrib.postgres.fields import JSONField
-from django.db import models
+from django.db import IntegrityError, models
 
 logger = logging.getLogger(__name__)
 
@@ -23,21 +23,53 @@ class Organisation(models.Model):
         return self.id
 
     @classmethod
-    def from_xml(cls, organisation_element: dict, abbr: str = None):
+    def from_xml(
+        cls, organisation_element: dict, abbr: str = None, update: bool = False
+    ):
 
         if isinstance(organisation_element, list):
             for child_element in organisation_element:
                 return cls.from_xml(child_element)
             return
+        if "organisation-identifier" not in organisation_element:
+
+            # Sometimes we get an "activity" in our "organisation" data
+            if "iati-identifier" in organisation_element:
+                logger.error("Masquerading Activity is trying to be an Organisation")
+                Activity.from_xml(organisation_element)
+                return
+
+            logger.error(
+                "Invalid organisation element: %s", str(organisation_element)[:200]
+            )
+            logger.error(
+                "Wrong type for organisation element - noorganisation-identifier key"
+            )
+            return
+
         pk = organisation_element["organisation-identifier"]
+
+        exists = cls.objects.filter(pk=pk).exists()
+
+        if exists and not update:
+            logger.debug(f"skip update of {pk}")
+            return
+
         o, _created = cls.objects.get_or_create(
             pk=pk, defaults=dict(element=organisation_element, abbreviation=abbr)
         )
+        if _created:
+            logger.debug(f"Created {o}")
         if not _created:
+            logger.debug(f"Updating {o}")
             o.iatiorganisation = organisation_element
             o.abbreviation = abbr
             o.save()
         return o
+
+
+class ActivityFormatException(Exception):
+    pass
 
 
 class Activity(models.Model):
@@ -45,27 +77,54 @@ class Activity(models.Model):
     identifier = models.TextField(primary_key=True)
     element = JSONField()
 
+    @staticmethod
+    def _validate_activity_xml(activity_element):
+        if not isinstance(activity_element, dict):
+            raise ActivityFormatException(
+                "Expected activity_element was %s not dictionary",
+                type(activity_element),
+            )
+        if "iati-identifier" not in activity_element:
+            raise ActivityFormatException(
+                "Expected iati-identifier was missing in activity"
+            )
+
+        iid = activity_element["iati-identifier"]
+        if not isinstance(iid, str):
+            raise ActivityFormatException("Expected iati-identifier was a bad format")
+        if iid == "":
+            raise ActivityFormatException("Expected iati-identifier was a bad format")
+        return iid
+
     @classmethod
-    def from_xml(cls, activity_element: dict) -> Tuple[Activity, bool]:
+    def from_xml(cls, activity_element: dict, update=False) -> Tuple[Activity, bool]:
 
         # Handle nested lists of activities
         if isinstance(activity_element, list):
             for child_element in activity_element:
                 cls.from_xml(child_element)
+            return
 
-        elif "iati-identifier" not in activity_element:
-            logger.error("Invalid activity element: %s", str(activity_element)[:200])
-            raise KeyError("Wrong type for activity element - no iati-identifier key")
+        iid = cls._validate_activity_xml(activity_element)
+        exists = cls.objects.filter(pk=iid).exists()
 
+        if exists and not update:
+            logger.debug(f"skip update of activity {iid}")
+            return
+
+        elif exists:
+            cls.objects.filter(pk=iid).update(element=activity_element)
+            logger.debug(f"update activity {iid}")
         else:
-            act, created = cls.objects.get_or_create(
-                pk=activity_element["iati-identifier"],
-                defaults=dict(element=dict(activity_element)),
-            )
-            if not created:
-                act.element = activity_element
-                act.save()
-            return act, created
+            try:
+                cls.objects.create(pk=iid, element=activity_element)
+                logger.debug(f"create activity {iid}")
+            except IntegrityError:
+                """? race condition ? """
+                try:
+                    cls.objects.create(pk=iid, element=activity_element)
+                except IntegrityError as e:
+                    logger.error("Could not save activity: %s", e)
 
 
 class CodelistManager(models.Manager):
@@ -119,8 +178,10 @@ class CodelistItemManager(models.Manager):
         """
         Returns IATI codes with a "withdrawal date" which is not null
         """
-        return self.get_queryset().filter(
-            **{"element__@withdrawal-date__isnull": False}
+        return (
+            self.get_queryset()
+            .filter(**{"element__@withdrawal-date__isnull": False})
+            .select_related("codelist")
         )
 
 

@@ -141,10 +141,10 @@ CACHES = {
     "default": {
         "BACKEND": "diskcache.DjangoCache",
         "LOCATION": os.path.join(BASE_DIR, "disk_cache"),
-        "TIMEOUT": 86400,
+        "TIMEOUT": 864000,
         # ^-- Django setting for default timeout of each key.
         "SHARDS": 8,
-        "DATABASE_TIMEOUT": 0.050,  # 10 milliseconds
+        "DATABASE_TIMEOUT": 0.100,  # 10 milliseconds
         # ^-- Timeout for each DjangoCache database transaction.
         "OPTIONS": {"size_limit": 2 ** 30 * 10},  # 10 gigabytes
     }
