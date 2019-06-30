@@ -52,6 +52,11 @@ async_to_sync(get_channel_layer().send)('iati', {'type': 'parse_xml', 'url': 'ht
 
 ### Tests
 
+Mypy should return no errors.
+```
+(iati-post) josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ mypy --config mypy.ini .
+```
+
 ```
 (iati-post) josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pytest iati_fetch/tests/
 ```

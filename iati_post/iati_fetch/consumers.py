@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Mapping
+from typing import Dict, List, Mapping, Union
 from xml.parsers.expat import ExpatError
 
 import jsonpath_rw_ext as jp
@@ -74,7 +74,7 @@ class BaseRequest:
     url: str
     method: str = "GET"
     expected_type: str = "text"  # Or 'json', 'xml'
-    params: Mapping[str, str] = None
+    params: Union[None, Mapping[str, str]] = None
     rhash: tuple = field(init=False, repr=False)
 
     def __post_init__(self):
@@ -90,24 +90,21 @@ class BaseRequest:
         return cls(**event)
 
     async def _request(self, session):
-        try:
-            async with session.request(**self.session_params) as response:
-                try:
-                    response.raise_for_status()
-                except Exception as e:
-                    raise ResponseUnsuccessfulException(
-                        "not caching due to a non 200: %s", response.status
-                    ) from e
 
-                assert response.status == 200
-                if self.expected_type == "json":
-                    response_text = await response.json()
-                else:
-                    response_text = await response.text()
-                return response, response_text
-        except ClientConnectorError:
-            logger.error(f"Client broke on {self}")
-            return None, None
+        async with session.request(**self.session_params) as response:
+            try:
+                response.raise_for_status()
+            except Exception as e:
+                raise ResponseUnsuccessfulException(
+                    "not caching due to a non 200: %s", response.status
+                ) from e
+
+            assert response.status == 200
+            if self.expected_type == "json":
+                response_text = await response.json()
+            else:
+                response_text = await response.text()
+            return response, response_text
 
     async def _fetch(self, session: ClientSession = None):
         if session:
@@ -147,17 +144,20 @@ class BaseRequest:
             try:
                 response, response_text = await self._fetch(session=session)
             except ResponseUnsuccessfulException as e:
-                logger.error(e)
+                logger.warn(e)
                 logger.warn("URL fetch failure %s", self)
                 return None
             except ClientPayloadError as e:
-                logger.error(e)
+                logger.warn(e)
+                logger.warn("ClientPayloadError %s", self)
+                return None
+            except ClientConnectorError as e:
+                logger.warn(e)
                 logger.warn("ClientPayloadError %s", self)
                 return None
             except Exception as e:
                 # Other exception types may include ClientConnectorError
                 logger.error(e)
-                raise
                 return None
             if cache:
                 await AsyncCache.set(self.rhash, response_text)
@@ -206,7 +206,7 @@ class OrganisationRequestDetail(JSONRequest):
     `https://iatiregistry.org/api/3/action/package_search?fq=organization:ask`
     """
 
-    organisation_handle: str = None
+    organisation_handle: Union[str, None] = None
     url: str = package_search_url
 
     def __post_init__(self):
@@ -268,7 +268,7 @@ class OrganisationRequestDetail(JSONRequest):
             tasks = []
             for abbr in organisations:
                 instance = cls(organisation_handle=abbr)
-                xml_requests = await instance.iati_xml_requests()
+                xml_requests = await instance.iati_xml_requests(session=session)
                 for request in xml_requests:
                     tasks.append(request.bound_get(sem, session=session))
 

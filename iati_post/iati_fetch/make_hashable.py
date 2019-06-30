@@ -1,19 +1,11 @@
 # Credit to https://stackoverflow.com/a/42151923/2219724
 
-import base64
-import hashlib
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def make_hash_sha256(o):
-    hasher = hashlib.sha256()
-    hasher.update(repr(make_hashable(o)).encode())
-    return base64.b64encode(hasher.digest()).decode()
-
-
-def make_hashable(o):
+def make_hashable(o) -> tuple:
     if isinstance(o, (tuple, list)):
         return tuple((make_hashable(e) for e in o))
 
@@ -28,7 +20,7 @@ def make_hashable(o):
 
 def request_hash(
     params: dict = None, url: str = "www.example.com", method: str = "GET", **kwargs
-):
+) -> tuple:
     dict_to_hash = {"__url__": url, "__method__": method}
     if params:
         dict_to_hash.update(params)
@@ -43,7 +35,3 @@ if __name__ == "__main__":
     print(make_hashable(o))
     # (('b', 2), ('c', (3, 4, 5)), ('d', (6, 7)), ('x', 1))
     print(make_hashable(2))
-
-    print(make_hash_sha256(o))
-    # fyt/gK6D24H9Ugexw+g3lbqnKZ0JAcgtNW+rXIDeU2Y=
-    print(make_hash_sha256(o2))

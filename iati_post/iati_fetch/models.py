@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Tuple
+from typing import Tuple, Union
 
 from django.contrib.postgres.fields import JSONField
 from django.db import IntegrityError, models
@@ -97,7 +97,9 @@ class Activity(models.Model):
         return iid
 
     @classmethod
-    def from_xml(cls, activity_element: dict, update=False) -> Tuple[Activity, bool]:
+    def from_xml(
+        cls, activity_element: dict, update=False
+    ) -> Union[None, Tuple[Activity, bool]]:
 
         # Handle nested lists of activities
         if isinstance(activity_element, list):
@@ -110,11 +112,12 @@ class Activity(models.Model):
 
         if exists and not update:
             logger.debug(f"skip update of activity {iid}")
-            return
+            return None
 
         elif exists:
             cls.objects.filter(pk=iid).update(element=activity_element)
             logger.debug(f"update activity {iid}")
+            return None
         else:
             try:
                 cls.objects.create(pk=iid, element=activity_element)
@@ -125,6 +128,10 @@ class Activity(models.Model):
                     cls.objects.create(pk=iid, element=activity_element)
                 except IntegrityError as e:
                     logger.error("Could not save activity: %s", e)
+                finally:
+                    return None
+            finally:
+                return None
 
 
 class CodelistManager(models.Manager):
@@ -205,3 +212,13 @@ class CodelistItem(models.Model):
         else:
             logger.warn('No "name" property could be determined')
             return ""
+
+
+class Request(models.Model):
+    request_hash = models.TextField(primary_key=True)
+
+
+class RequestCacheRecord(models.Model):
+    request = models.ForeignKey(Request, on_delete=models.CASCADE)
+    when = models.DateTimeField()
+    response_code = models.IntegerField()
