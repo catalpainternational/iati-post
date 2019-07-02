@@ -14,6 +14,8 @@ class OrganisationAbbreviation(models.Model):
     abbreviation = models.TextField(primary_key=True)
     withdrawn = models.BooleanField(default=False)
 
+    def __str__(self):
+        return self.abbreviation
 
 class Organisation(models.Model):
 
@@ -28,12 +30,12 @@ class Organisation(models.Model):
 
     @classmethod
     def from_xml(
-        cls, organisation_element: dict, abbr: str = None, update: bool = False
+        cls, organisation_element: dict, abbr: str, update: bool = False
     ):
-
+        assert abbr
         if isinstance(organisation_element, list):
             for child_element in organisation_element:
-                return cls.from_xml(child_element)
+                return cls.from_xml(child_element, abbr, update)
             return
         if "organisation-identifier" not in organisation_element:
 
@@ -59,15 +61,16 @@ class Organisation(models.Model):
             logger.debug(f"skip update of {pk}")
             return
 
+        ab_instance = OrganisationAbbreviation.objects.get_or_create(pk = abbr)[0]
+
         o, _created = cls.objects.get_or_create(
-            pk=pk, defaults=dict(element=organisation_element, abbreviation=abbr)
+            pk=pk, abbreviation = ab_instance, defaults=dict(element=organisation_element)
         )
         if _created:
             logger.debug(f"Created {o}")
         if not _created:
             logger.debug(f"Updating {o}")
             o.iatiorganisation = organisation_element
-            o.abbreviation = abbr
             o.save()
         return o
 

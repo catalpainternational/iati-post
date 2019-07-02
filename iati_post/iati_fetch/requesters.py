@@ -289,6 +289,7 @@ class OrganisationRequestDetail(JSONRequest):
     def __post_init__(self):
         self.params = self.params or {}
         self.params["fq"] = f"organization:{self.organisation_handle}"
+        self.params["rows"] = "100000"
         super().__post_init__()
 
     async def iati_xml_sources(self, session) -> List[Dict]:
@@ -296,15 +297,16 @@ class OrganisationRequestDetail(JSONRequest):
         got = await self.get(session)
         for result in got["result"]["results"]:
             for resource in result["resources"]:
-                if resource["format"] == "IATI-XML":
+                fmt = resource["format"]
+                if fmt.lower() == "iati-xml":
                     resources.append(resource)
                 else:
-                    logger.debug(f' {self} Unexpected "Format": not "IATI-XML"')
+                    logger.debug(f' {self} Unexpected "Format": {fmt} not "IATI-XML"')
         return resources
 
     async def iati_xml_requests(self, session) -> List["IatiXMLRequest"]:
         resources = await self.iati_xml_sources(session)
-        return [IatiXMLRequest(url=resource["url"]) for resource in resources]
+        return [IatiXMLRequest(url=resource["url"], organisation_handle=self.organisation_handle) for resource in resources]
 
     async def result__results(self):
         result = await self.result()
@@ -352,6 +354,9 @@ class XMLRequest(BaseRequest):
 
 @dataclass
 class IatiXMLRequest(XMLRequest):
+
+    organisation_handle: Union[str, None] = None
+
     async def activities(self):
         return await self.matches("[iati-activities][iati-activity]")
 
