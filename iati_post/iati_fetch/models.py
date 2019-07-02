@@ -5,19 +5,23 @@ from typing import Tuple, Union
 
 from django.contrib.postgres.fields import JSONField
 from django.db import IntegrityError, models
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
 
+class OrganisationAbbreviation(models.Model):
+    abbreviation = models.TextField(primary_key=True)
+    withdrawn = models.BooleanField(default=False)
+
+
 class Organisation(models.Model):
 
-    id = models.TextField(
-        primary_key=True
-    )  # This is the IATI identifier for an organisation
-    abbreviation = models.TextField(
-        null=True
-    )  # This is the abbreviation for a "lookup" in the IATI system
+    id = models.TextField(primary_key=True)
     element = JSONField(null=True)  # This is the <iati-organisation> tag as JSON
+    abbreviation = models.OneToOneField(
+        OrganisationAbbreviation, on_delete=models.CASCADE
+    )
 
     def __str__(self):
         return self.id
@@ -222,3 +226,8 @@ class RequestCacheRecord(models.Model):
     request = models.ForeignKey(Request, on_delete=models.CASCADE)
     when = models.DateTimeField()
     response_code = models.IntegerField()
+    exception = models.TextField()
+
+    def save(self, *args, **kwargs):
+        """ On save, update timestamps """
+        self.when = timezone.now().date()

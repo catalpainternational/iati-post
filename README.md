@@ -148,6 +148,7 @@ Expect no output from the following:
 josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pipenv run isort -rc .
 josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pipenv run black .
 josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pipenv run flake8 .
+josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ autopep8 -ir --aggressive --aggressive .
 ```
 
 Also expect all tests to pass

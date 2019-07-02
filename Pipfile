@@ -15,6 +15,8 @@ black = "==19.3b0"
 pylint = "*"
 pytest-django = "*"
 pytest-asyncio = "*"
+line-profiler = "*"
+autopep8 = "*"
 
 [packages]
 ipykernel = "*"
@@ -32,6 +34,7 @@ jsonpath-rw = "*"
 jsonpath-ng = "*"
 jsonpath-rw-ext = "*"
 bs4 = "*"
+pyprof2calltree = "*"
 
 [requires]
 python_version = "3.7"

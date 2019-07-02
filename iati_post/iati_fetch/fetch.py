@@ -58,7 +58,9 @@ async def organisation_json(name: str = "1-uz"):
 
     async def get_json(record_url, record_params):
         async with ClientSession(connector=TCPConnector(ssl=False)) as session:
-            async with session.post(record_url, data=record_params) as response:
+            async with session.post(
+                record_url, data=record_params, ssl=False
+            ) as response:
                 json_content = await response.json()
                 return json_content
 
