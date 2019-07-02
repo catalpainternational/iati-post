@@ -4,7 +4,7 @@ from aiohttp import ClientSession, TCPConnector
 from asgiref.sync import async_to_sync
 from django.test import TestCase
 
-from iati_fetch import consumers, requesters, tasks
+from iati_fetch import requesters, tasks
 
 # Create your tests here.
 
@@ -38,7 +38,7 @@ class RequestsTestCase(TestCase):
 
     @async_to_sync
     async def test_create_instances_from_iatixml(self):
-        await tasks.xml_requests_process(
+        await tasks.xml_requests_get(
             organisations=["ask"]
         )
 

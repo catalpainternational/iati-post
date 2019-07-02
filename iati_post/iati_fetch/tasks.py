@@ -1,4 +1,7 @@
 from . import requesters
+import asyncio
+from aiohttp import ClientSession, TCPConnector
+
 
 async def xml_requests_get(
     organisations: list = None, exclude_cached: bool = False

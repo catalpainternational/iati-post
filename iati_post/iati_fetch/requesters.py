@@ -90,7 +90,7 @@ class DatabaseRequestStore:
 
     def _on_request_success(self):
         RequestCacheRecord.objects.create(
-            request=Request.objects.get_or_create(pk=self.rhash)[0], code=200
+            request=Request.objects.get_or_create(pk=self.rhash)[0], response_code=200
         )
 
     def _on_request_fail(self, e):
@@ -124,8 +124,8 @@ class BaseRequest(DatabaseRequestStore):
         return cls(**event)
 
     async def is_cached(self):
-        has_key = await AsyncCache.has_key(self.rhash)
-        return has_key  # noqa:W601
+        has_key = await AsyncCache.has_key(self.rhash)  # noqa:W601
+        return has_key
 
     async def _request(self, session):
 
@@ -165,7 +165,7 @@ class BaseRequest(DatabaseRequestStore):
         If falsey, create a session with a warning
         If session is a ClientSession use the provided Session
         """
-        has_key = await AsyncCache.has_key(self.rhash)  # noqa
+        has_key = await self.is_cached()  # noqa
 
         # Return from cache
         if has_key:
