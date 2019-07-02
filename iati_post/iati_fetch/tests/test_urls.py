@@ -1,6 +1,6 @@
 from django.test import TestCase
 
-from iati_fetch import consumers
+from iati_fetch import requesters
 
 
 class ImportActivity(TestCase):
@@ -8,6 +8,6 @@ class ImportActivity(TestCase):
         """Animals that can speak are correctly identified"""
         pass
         url = "https://aidstream.org/files/xml/ask-activities.xml"
-        consumers.IatiXMLRequest(url=url)
+        requesters.IatiXMLRequest(url=url)
         # async_to_sync(requester.to_instances)()
         # print(Activity.objects.first())

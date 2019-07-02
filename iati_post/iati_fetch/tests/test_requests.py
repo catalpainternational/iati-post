@@ -4,7 +4,7 @@ from aiohttp import ClientSession, TCPConnector
 from asgiref.sync import async_to_sync
 from django.test import TestCase
 
-from iati_fetch import consumers
+from iati_fetch import consumers, requesters, tasks
 
 # Create your tests here.
 
@@ -12,7 +12,7 @@ from iati_fetch import consumers
 class RequestsTestCase(TestCase):
     def test_organisation_list(self):
         """We can fetch the list of organisations. We understand the returned format."""
-        req = consumers.OrganisationRequestList()
+        req = requesters.OrganisationRequestList()
         result = async_to_sync(req.get)(refresh=False)
         self.assertTrue(isinstance(result["result"], list))
         """From cache ought to return the same result"""
@@ -23,29 +23,22 @@ class RequestsTestCase(TestCase):
         """
         We can fetch an organisation's details
         """
-        req = consumers.OrganisationRequestDetail(organisation_handle="ask")
+        req = requesters.OrganisationRequestDetail(organisation_handle="ask")
         result = async_to_sync(req.get)(refresh=False)
         self.assertTrue(isinstance(result, dict))
-
-    @async_to_sync
-    async def test_fetch_many_organisations(self):
-        """
-        We can fetch an organisation's details
-        """
-        await consumers.OrganisationRequestDetail().to_instances()
 
     @async_to_sync
     async def test_fetch_many_xmls(self):
         """
         We can fetch an organisation's details
         """
-        await consumers.OrganisationRequestDetail().xml_requests_get(
+        await tasks.xml_requests_get(
             organisations=["ask"]
         )
 
     @async_to_sync
     async def test_create_instances_from_iatixml(self):
-        await consumers.OrganisationRequestDetail().xml_requests_process(
+        await tasks.xml_requests_process(
             organisations=["ask"]
         )
 
@@ -54,7 +47,7 @@ class RequestsTestCase(TestCase):
         We can fetch an organisation type XML file
         """
         url = "https://aidstream.org/files/xml/ask-org.xml"
-        req = consumers.IatiXMLRequest(url=url)
+        req = requesters.IatiXMLRequest(url=url)
         async_to_sync(req.get)(refresh=False)
         async_to_sync(req.organisations)()
 
@@ -63,7 +56,7 @@ class RequestsTestCase(TestCase):
         We can fetch an activities type XML file
         """
         url = "https://aidstream.org/files/xml/ask-activities.xml"
-        requester = consumers.IatiXMLRequest(url=url)
+        requester = requesters.IatiXMLRequest(url=url)
         async_to_sync(requester.get)(refresh=False)
         async_to_sync(requester.activities)()
 
@@ -71,7 +64,7 @@ class RequestsTestCase(TestCase):
         import json
 
         url = "https://aidstream.org/files/xml/ask-activities.xml"
-        requester = consumers.IatiXMLRequest(url=url)
+        requester = requesters.IatiXMLRequest(url=url)
         async_to_sync(requester.get)(refresh=False)
         activities = async_to_sync(requester.activities)()
         json.dumps(activities[0])
@@ -80,16 +73,16 @@ class RequestsTestCase(TestCase):
     @async_to_sync
     async def test_multiple_get_one_session(self):
         url_list = {
-            "ask_activities": consumers.IatiXMLRequest(
+            "ask_activities": requesters.IatiXMLRequest(
                 url="https://aidstream.org/files/xml/ask-activities.xml"
             ),
-            "ask_org": consumers.IatiXMLRequest(
+            "ask_org": requesters.IatiXMLRequest(
                 url="https://aidstream.org/files/xml/ask-org.xml"
             ),
-            "organisation_ask": consumers.BaseRequest(
+            "organisation_ask": requesters.BaseRequest(
                 url="https://iatiregistry.org/api/3/action/package_search?fq=organization:ask"  # noqa
             ),
-            "organisation_list": consumers.BaseRequest(
+            "organisation_list": requesters.BaseRequest(
                 url="https://iatiregistry.org/api/3/action/organization_list"
             ),
         }
@@ -107,4 +100,4 @@ class RequestsTestCase(TestCase):
         Test that we can populate a lookup table with IATI codelists
         and items
         """
-        await consumers.IatiCodelistListRequest().to_instances()
+        await requesters.IatiCodelistListRequest().to_instances()

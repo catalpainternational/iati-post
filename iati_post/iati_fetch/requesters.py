@@ -124,7 +124,8 @@ class BaseRequest(DatabaseRequestStore):
         return cls(**event)
 
     async def is_cached(self):
-        return self.rhash in await AsyncCache  # noqa:W601
+        has_key = await AsyncCache.has_key(self.rhash)
+        return has_key  # noqa:W601
 
     async def _request(self, session):
 
@@ -164,7 +165,7 @@ class BaseRequest(DatabaseRequestStore):
         If falsey, create a session with a warning
         If session is a ClientSession use the provided Session
         """
-        has_key = self.rhash in await AsyncCache  # noqa
+        has_key = await AsyncCache.has_key(self.rhash)  # noqa
 
         # Return from cache
         if has_key:
@@ -308,57 +309,6 @@ class OrganisationRequestDetail(JSONRequest):
     async def result__results(self):
         result = await self.result()
         return result["results"]
-
-    @classmethod
-    async def xml_requests_get(
-        cls, organisations: list = None, exclude_cached: bool = False
-    ):
-        if not organisations:
-            orl = OrganisationRequestList()
-            organisations = await orl.to_list()
-
-        assert isinstance(organisations, list)
-
-        sem = asyncio.Semaphore(
-            2000
-        )  # Limit parallel requests avoiding an OSError: too many open files
-        async with ClientSession(connector=TCPConnector(ssl=False)) as session:
-            request_count = 0
-            tasks = []
-            count_orgs = len(organisations)
-            print(f"Gathering {count_orgs} Organisations")
-            for abbr in organisations:
-                instance = cls(organisation_handle=abbr)
-                xml_requests = await instance.iati_xml_requests(session=session)
-
-                for request in xml_requests:
-                    if exclude_cached:
-                        cached = await request.is_cached()
-                        if cached:
-                            continue
-                    request_count += 1
-                    tasks.append(request.bound_get(sem, session=session))
-            task_count = len(tasks)
-            print(f"Gathering {request_count} XML requests")
-            print(f"Gathering {task_count} tasks")
-            await asyncio.gather(*tasks)
-
-        # async with
-
-        # logger.info(things)
-
-        # async with ClientSession(
-        #     connector=TCPConnector(ssl=False), timeout=ClientTimeout(total=60 * 60)
-        # ) as session:
-        #     tasks = []
-        #     for abbr in organisations:
-        #         instance = cls(organisation_handle=abbr)
-        #         xml_requests = await instance.iati_xml_requests(session=session)
-        #         for request in xml_requests:
-        #             tasks.append(request.to_instances_semaphored(
-        # sem, session=session))
-
-        #     await asyncio.gather(*tasks)
 
 
 @dataclass
