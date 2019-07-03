@@ -30,7 +30,7 @@ class Organisation(models.Model):
 
     @classmethod
     def from_xml(
-        cls, organisation_element: dict, abbr: str, update: bool = False
+        cls, organisation_element: dict, abbr: str, update: bool = False, attempt: int=0
     ):
         assert abbr
         if isinstance(organisation_element, list):
@@ -62,10 +62,14 @@ class Organisation(models.Model):
             return
 
         ab_instance = OrganisationAbbreviation.objects.get_or_create(pk = abbr)[0]
-
-        o, _created = cls.objects.get_or_create(
-            pk=pk, abbreviation = ab_instance, defaults=dict(element=organisation_element)
-        )
+        try:
+            o, _created = cls.objects.get_or_create(
+                pk=pk, abbreviation = ab_instance, defaults=dict(element=organisation_element)
+            )
+        except IntegrityError:
+            if attempt < 3:
+                attempt += 1 
+            return cls.from_xml(organisation_element, abbr, update, attempt=attempt)
         if _created:
             logger.debug(f"Created {o}")
         if not _created:
