@@ -78,29 +78,12 @@ class ResponseUnsuccessfulException(Exception):
 
     pass
 
-
-@dataclass
-class DatabaseRequestStore:
-    """
-    Requests inheriting from BaseRequest have request error/success codes
-    remembered in a Django model
-    """
-
-    rhash: tuple = field(init=False, repr=False)
-
-    def _on_request_success(self):
-        RequestCacheRecord.objects.create(
-            request=Request.objects.get_or_create(pk=self.rhash)[0], response_code=200
-        )
-
-    def _on_request_fail(self, e):
-        RequestCacheRecord.objects.create(
-            request=Request.objects.get_or_create(pk=self.rhash)[0], exception=f"{e}"
-        )
+class NoSessionError(Exception):
+    pass
 
 
 @dataclass
-class BaseRequest(DatabaseRequestStore):
+class BaseRequest:
     """
     This represents a basic http(s) request.
     """
@@ -127,6 +110,14 @@ class BaseRequest(DatabaseRequestStore):
         has_key = await AsyncCache.has_key(self.rhash)  # noqa:W601
         return has_key
 
+    async def assert_is_cached_or_has_session(self, **kwargs):
+        '''
+        Guard against making a single request with a Session object
+        '''
+        cced = await self.is_cached
+        sessioned = isinstance(kwargs.get(session, None), ClientSession)
+        assert cced or sessioned
+
     async def _request(self, session):
 
         async with session.request(
@@ -136,9 +127,7 @@ class BaseRequest(DatabaseRequestStore):
 
             try:
                 response.raise_for_status()
-                self._on_request_success()
             except Exception as e:
-                self._on_request_fail(e)
                 raise ResponseUnsuccessfulException(
                     "not caching due to a non 200: %s", response.status
                 ) from e
@@ -154,9 +143,10 @@ class BaseRequest(DatabaseRequestStore):
 
     async def get(
         self,
-        session: Union[bool, ClientSession] = False,
+        session: Union[bool, ClientSession],
         refresh: bool = False,
         cache: bool = True,
+        internal_session: bool = False,
     ):
         """
         Public API to fetch the request
@@ -191,10 +181,9 @@ class BaseRequest(DatabaseRequestStore):
                 if isinstance(session, ClientSession):
                     response, response_text = await self._request(session=session)
                 else:
-                    if session is not True:
-                        logger.warn(
-                            'No "Session" object. Creating one session for request may be inefficient.'  # noqa
-                        )
+                    if internal_session is not True:
+                        raise NoSessionError('No "Session" object. Creating one session for request may be inefficient. pass "get_internal_session" arg')  # noqa
+                    
                     async with ClientSession(
                         connector=TCPConnector(ssl=False)
                     ) as session:
@@ -212,6 +201,8 @@ class BaseRequest(DatabaseRequestStore):
                 logger.warn("URL fetch failure %s", self)
                 logger.debug(e, exc_info=True)
                 return None
+            except NoSessionError:
+                raise
             except Exception as e:
                 logger.error(e, exc_info=True)
                 return None
@@ -240,8 +231,8 @@ class BaseRequest(DatabaseRequestStore):
 class JSONRequest(BaseRequest):
     expected_type: str = "json"
 
-    async def matches(self, getter):
-        got = await self.get()
+    async def matches(self, getter, session: Union[ClientSession, None]):
+        got = await self.get(session=session)
         return jp.match(getter, got)
 
 
@@ -249,8 +240,8 @@ class JSONRequest(BaseRequest):
 class OrganisationRequestList(JSONRequest):
     url: str = organisation_list_url
 
-    async def to_list(self):
-        result = await self.get()
+    async def to_list(self, session: Union[ClientSession, None]):
+        result = await self.get(session=session)
         return result["result"]
 
     def to_models(self):
@@ -320,7 +311,11 @@ class XMLRequest(BaseRequest):
         Activity objects as xmltojson'd objects
         """
         logger.debug("to_json %s", self)
-        got = await self.get()
+        cached = await self.is_cached()
+        if not cached:
+            logger.warn('Request was not cached')
+            return {}
+        got = await self.get(session=None)
         # Xml to JSON is not always clear about whether
         # element should be treated as a single element or a list.
         # In any situation where you encounter issues iterating over
@@ -393,7 +388,7 @@ class IatiXMLRequest(XMLRequest):
                 pass
 
     async def to_instances_semaphored(
-        self, sema: asyncio.Semaphore, session: ClientSession
+        self, sema: asyncio.Semaphore, session: Union[ClientSession, None]
     ):
         async with sema:
             await self.get(session=session)
@@ -419,12 +414,12 @@ class IatiCodelistListRequest(BaseRequest):
 
     url: str = "http://reference.iatistandard.org/203/codelists/downloads/clv3/xml/"
 
-    async def _process_links(self) -> List[str]:
+    async def _process_links(self, session: Union[ClientSession, None]) -> List[str]:
         """
         Fetch list of all IATI-vocabulary XML files
         """
         xml_refs = []
-        got = await self.get()
+        got = await self.get(session=session)
         soup = BeautifulSoup(got, features="html.parser")
         for link in soup.find_all("a", href=True):
             href = link["href"]

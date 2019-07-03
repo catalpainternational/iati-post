@@ -69,7 +69,9 @@ class Organisation(models.Model):
         except IntegrityError:
             if attempt < 3:
                 attempt += 1 
-            return cls.from_xml(organisation_element, abbr, update, attempt=attempt)
+                return cls.from_xml(organisation_element, abbr, update, attempt=attempt)
+            logger.error('Broke while trying to do organisation update')
+            return cls.objects.filter(pk=pk).first()
         if _created:
             logger.debug(f"Created {o}")
         if not _created:
