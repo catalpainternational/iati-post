@@ -60,6 +60,13 @@ class AsyncCache:
     async def has_key(*args, **kwargs):
         return await sync_to_async(cache.has_key)(*args, **kwargs)
 
+    @staticmethod
+    async def has(*args, **kwargs):
+        """
+        Synonym for '.has_key' which autopep autobreaks 
+        """
+        return await sync_to_async(cache.has)(*args, **kwargs)
+
 
 class ResponseCacheException(Exception):
     """
@@ -106,8 +113,8 @@ class BaseRequest:
         return cls(**event)
 
     async def is_cached(self):
-        has_key = self.rhash in await AsyncCache  # noqa:W601
-        return has_key
+        has = await AsyncCache.has(self.rhash)
+        return has
 
     async def assert_is_cached_or_has_session(self, **kwargs):
         """
