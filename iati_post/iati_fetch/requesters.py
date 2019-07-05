@@ -65,7 +65,7 @@ class AsyncCache:
         """
         Synonym for '.has_key' which autopep autobreaks
         """
-        return await sync_to_async(cache.has)(*args, **kwargs)
+        return await sync_to_async(cache.has_key)(*args, **kwargs)
 
 
 class ResponseCacheException(Exception):
