@@ -223,7 +223,8 @@ class Activity(models.Model):
     ) -> Union[None, Tuple[Activity, bool]]:
         def find_narratives(element, path, narratives={}):
             """
-            Narratives can be arbitrary lengths which makes "sensible" activities hard to index.
+            Narratives can be arbitrary lengths which makes
+            "sensible" activities hard to index.
             Take these fields into a related model.
             """
             for k, v in element.items():

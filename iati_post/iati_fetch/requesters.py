@@ -114,7 +114,7 @@ class BaseRequest:
         Guard against making a single request with a Session object
         """
         cced = await self.is_cached
-        sessioned = isinstance(kwargs.get('session', None), ClientSession)
+        sessioned = isinstance(kwargs.get("session", None), ClientSession)
         assert cced or sessioned
 
     async def _request(self, session):
@@ -142,7 +142,7 @@ class BaseRequest:
 
     async def get(
         self,
-        session: Union[bool, ClientSession],
+        session: Union[bool, ClientSession] = None,
         refresh: bool = False,
         cache: bool = True,
         internal_session: bool = False,
@@ -182,7 +182,7 @@ class BaseRequest:
                 else:
                     if internal_session is not True:
                         raise NoSessionError(
-                            'No "Session" object. Creating one session for request may be inefficient. pass "get_internal_session" arg'  # noqa
+                            'No "Session" object. Creating one session for request may be inefficient. pass "internal_session" arg'  # noqa
                         )
 
                     async with ClientSession(
@@ -435,21 +435,27 @@ class IatiCodelistListRequest(BaseRequest):
                 xml_refs.append(self.url + href)
         return xml_refs
 
-    async def _xml_requests(self) -> List[XMLRequest]:
+    async def _xml_requests(self, session: ClientSession) -> List[XMLRequest]:
         """
         Fetch 'XMLRequest' objects for all the links
         """
-        xml_files = await self._process_links()
+        xml_files = await self._process_links(session=session)
         return [IatiCodelistDetailRequest(url=x) for x in xml_files]
 
-    async def _fetch_links(self) -> List[XMLRequest]:
+    async def _fetch_links(
+        self, session: Union[ClientSession, None] = None
+    ) -> List[XMLRequest]:
         """
         Cache all of the xml files found on the page with a single Session object
         """
-        async with ClientSession() as session:
-            xml_requests = await self._xml_requests()
+        if session:
+            xml_requests = await self._xml_requests(session=session)
             await asyncio.gather(*[r.get(session=session) for r in xml_requests])
+            return xml_requests
 
+        async with ClientSession() as session:
+            xml_requests = await self._xml_requests(session=session)
+            await asyncio.gather(*[r.get(session=session) for r in xml_requests])
             return xml_requests
 
     async def to_instances(self):

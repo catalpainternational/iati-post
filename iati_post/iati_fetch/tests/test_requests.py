@@ -24,7 +24,7 @@ class RequestsTestCase(TestCase):
         We can fetch an organisation's details
         """
         req = requesters.OrganisationRequestDetail(organisation_handle="ask")
-        result = async_to_sync(req.get)(refresh=False)
+        result = async_to_sync(req.get)(refresh=False, internal_session=True)
         self.assertTrue(isinstance(result, dict))
 
     @async_to_sync
@@ -44,7 +44,7 @@ class RequestsTestCase(TestCase):
         """
         url = "https://aidstream.org/files/xml/ask-org.xml"
         req = requesters.IatiXMLRequest(url=url)
-        async_to_sync(req.get)(refresh=False)
+        async_to_sync(req.get)(refresh=False, internal_session=True)
         async_to_sync(req.organisations)()
 
     def test_activities_xml(self):
@@ -53,7 +53,7 @@ class RequestsTestCase(TestCase):
         """
         url = "https://aidstream.org/files/xml/ask-activities.xml"
         requester = requesters.IatiXMLRequest(url=url)
-        async_to_sync(requester.get)(refresh=False)
+        async_to_sync(requester.get)(refresh=False, internal_session=True)
         async_to_sync(requester.activities)()
 
     def test_save_one_activity(self):
@@ -61,7 +61,7 @@ class RequestsTestCase(TestCase):
 
         url = "https://aidstream.org/files/xml/ask-activities.xml"
         requester = requesters.IatiXMLRequest(url=url)
-        async_to_sync(requester.get)(refresh=False)
+        async_to_sync(requester.get)(refresh=False, internal_session=True)
         activities = async_to_sync(requester.activities)()
         json.dumps(activities[0])
         async_to_sync(requester.to_instances)()

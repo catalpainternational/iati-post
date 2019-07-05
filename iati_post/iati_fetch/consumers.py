@@ -6,6 +6,8 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 
 from . import requesters
 
+from aiohttp import ClientSession
+
 logging.captureWarnings(True)
 logger = logging.getLogger(__name__)
 
@@ -24,7 +26,8 @@ class RequestConsumer(SyncConsumer):
         and sends an 'ok' message
         """
         request = requesters.BaseRequest.from_event()
-        await request.get()
+        async with ClientSession() as session:
+            await request.get(session=session)
 
     async def clear_cache(self, event):
         request = requesters.BaseRequest.from_event()
@@ -76,7 +79,8 @@ class FetchUrl(AsyncWebsocketConsumer):
 
     async def receive(self, text_data=None, bytes_data=None):
         request = requesters.BaseRequest(url="http://example.com")
-        response_text = await request.get()
+        async with ClientSession() as session:
+            response_text = await request.get(session=session)
         await self.send(text_data=response_text)
 
     async def disconnect(self, close_code):
@@ -89,7 +93,8 @@ class IatiConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data=None, bytes_data=None):
         request = requesters.OrganisationRequestList()
-        response_text = await request.get()
+        async with ClientSession() as session:
+            response_text = await request.get(session=session)
         await self.send(text_data=json.dumps(response_text))
 
     async def disconnect(self, close_code):
@@ -104,7 +109,8 @@ class IatiActivitiesConsumer(AsyncWebsocketConsumer):
         request = requesters.IatiXMLRequest(
             url="https://aidstream.org/files/xml/ask-activities.xml"
         )
-        response_text = await request.get()
+        async with ClientSession() as session:
+            response_text = await request.get(session=session)
         await self.send(text_data=json.dumps(response_text))
 
     async def disconnect(self, close_code):
