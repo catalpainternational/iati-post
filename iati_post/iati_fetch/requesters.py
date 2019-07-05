@@ -63,7 +63,7 @@ class AsyncCache:
     @staticmethod
     async def has(*args, **kwargs):
         """
-        Synonym for '.has_key' which autopep autobreaks 
+        Synonym for '.has_key' which autopep autobreaks
         """
         return await sync_to_async(cache.has)(*args, **kwargs)
 
