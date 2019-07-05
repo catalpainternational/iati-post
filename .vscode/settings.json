@@ -1,3 +1,11 @@
 {
-    "python.pythonPath": "env/bin/python"
+    "python.pythonPath": "/home/josh/.local/share/virtualenvs/iati-post-B2hPbECz/bin/python",
+    "python.testing.pytestEnabled": true,
+    "python.testing.unittestEnabled": false,
+    "python.testing.nosetestsEnabled": false,
+    "python.linting.pylintEnabled": true,
+    "python.linting.enabled": true,
+    "python.testing.pytestArgs": [
+        "iati_post"
+    ]
 }

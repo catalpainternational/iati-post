@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Any, List, Tuple
 
 from aiohttp import ClientSession, TCPConnector
 from channels.db import database_sync_to_async
@@ -57,7 +58,9 @@ async def organisation_json(name: str = "1-uz"):
 
     async def get_json(record_url, record_params):
         async with ClientSession(connector=TCPConnector(ssl=False)) as session:
-            async with session.post(record_url, data=record_params) as response:
+            async with session.post(
+                record_url, data=record_params, ssl=False
+            ) as response:
                 json_content = await response.json()
                 return json_content
 
@@ -95,20 +98,19 @@ async def organisation_xml(name: str = "1-uz", refresh_all: bool = False):
         return request_urls_to_fetch
 
     @database_sync_to_async
-    def fetch_url_list_for_organisation(RequestSource_json: str) -> list:
+    def fetch_url_list_for_organisation(
+        RequestSource_json: str
+    ) -> List[Tuple[int, str, bool]]:
         urls = []
         logger.debug("Parsing organisation resources list")
-        request_urls_to_fetch = []
         for result in json.loads(RequestSource_json)["result"]["results"]:
             for resource in result["resources"]:
                 model = apps.get_model("iati_fetch", "RequestSource")
                 rs, created = model.objects.get_or_create(
                     method="GET", expected_content_type="xml", url=resource["url"]
                 )
-                if rs.xml:
-                    urls.append((rs.pk, rs.url, True))
-                else:
-                    urls.append((rs.pk, rs.url, False))
+                urls.append((int(rs.pk), str(rs.url), bool(rs.xml)))
+
         return urls
 
     @database_sync_to_async
@@ -148,7 +150,7 @@ async def organisation_list():
     """
 
     @database_sync_to_async
-    def get_or_set_request_source(json: dict) -> ("RequestSource", bool):
+    def get_or_set_request_source(json: dict) -> Tuple[Any, bool]:
         model = apps.get_model("iati_fetch", "RequestSource")
         rs, created = model.objects.get_or_create(
             url=organisation_list_url,

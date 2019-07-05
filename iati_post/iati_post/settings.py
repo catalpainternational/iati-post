@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/2.2/ref/settings/
 """
 
 import os
+from typing import Any
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,12 +26,12 @@ SECRET_KEY = "yvwb2!2o+^$j^sqq(8zsf^08icd6by49rjuzmzn&sazciw_^=-"
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS: list = []
 
 
 # Application definition
 
-INSTALLED_APPS = [
+INSTALLED_APPS: list = [
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -79,7 +80,7 @@ WSGI_APPLICATION = "iati_post.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/2.2/ref/settings/#databases
 
-DATABASES = {
+DATABASES: Any = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": os.path.join(BASE_DIR, "db.sqlite3"),
@@ -91,7 +92,7 @@ DATABASES = {
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"  # noqa
     },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
@@ -141,15 +142,15 @@ CACHES = {
     "default": {
         "BACKEND": "diskcache.DjangoCache",
         "LOCATION": os.path.join(BASE_DIR, "disk_cache"),
-        "TIMEOUT": 86400,
+        "TIMEOUT": 864000,
         # ^-- Django setting for default timeout of each key.
         "SHARDS": 8,
-        "DATABASE_TIMEOUT": 0.050,  # 10 milliseconds
+        "DATABASE_TIMEOUT": 0.100,  # 10 milliseconds
         # ^-- Timeout for each DjangoCache database transaction.
         "OPTIONS": {"size_limit": 2 ** 30 * 10},  # 10 gigabytes
     }
 }
 try:
-    from .local_settings import *
-except:
+    from .local_settings import *  # noqa
+except ImportError:
     pass

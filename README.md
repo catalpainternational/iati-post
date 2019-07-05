@@ -49,6 +49,24 @@ async_to_sync(get_channel_layer().send)('request',{'type': 'get'})
 async_to_sync(get_channel_layer().send)('iati', {'type': 'parse_xml', 'url': 'https://ngoaidmap.org/iati/organizations/225'})
 ```
 
+
+### Tests
+
+Mypy should return no errors.
+```
+(iati-post) josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ mypy --config mypy.ini .
+```
+
+```
+(iati-post) josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pytest iati_fetch/tests/
+```
+
+With coverage:
+```
+(iati-post) josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pytest --cov=iati_post iati_fetch/tests/
+```
+
+
 ### Jupyter Lab
 
 See [here](https://stackoverflow.com/questions/35483328/how-to-setup-jupyter-ipython-notebook-for-django/52214033#52214033)
@@ -121,3 +139,16 @@ EDITOR=nano tmuxinator start iatipost
 
 Copy `iatipost.yml` to `~/.tmuxinator`
 This runs a shell and some handlers
+
+## Linting
+
+
+Expect no output from the following:
+```
+josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pipenv run isort -rc .
+josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pipenv run black .
+josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ pipenv run flake8 .
+josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ autopep8 -ir --aggressive --aggressive .
+```
+
+Also expect all tests to pass
