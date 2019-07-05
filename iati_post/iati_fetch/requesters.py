@@ -30,8 +30,6 @@ from iati_fetch.models import (
     Codelist,
     Organisation,
     OrganisationAbbreviation,
-    Request,
-    RequestCacheRecord,
 )
 
 logging.captureWarnings(True)
@@ -78,6 +76,7 @@ class ResponseUnsuccessfulException(Exception):
 
     pass
 
+
 class NoSessionError(Exception):
     pass
 
@@ -107,15 +106,15 @@ class BaseRequest:
         return cls(**event)
 
     async def is_cached(self):
-        has_key = await AsyncCache.has_key(self.rhash)  # noqa:W601
+        has_key = self.rhash in await AsyncCache  # noqa:W601
         return has_key
 
     async def assert_is_cached_or_has_session(self, **kwargs):
-        '''
+        """
         Guard against making a single request with a Session object
-        '''
+        """
         cced = await self.is_cached
-        sessioned = isinstance(kwargs.get(session, None), ClientSession)
+        sessioned = isinstance(kwargs.get('session', None), ClientSession)
         assert cced or sessioned
 
     async def _request(self, session):
@@ -182,8 +181,10 @@ class BaseRequest:
                     response, response_text = await self._request(session=session)
                 else:
                     if internal_session is not True:
-                        raise NoSessionError('No "Session" object. Creating one session for request may be inefficient. pass "get_internal_session" arg')  # noqa
-                    
+                        raise NoSessionError(
+                            'No "Session" object. Creating one session for request may be inefficient. pass "get_internal_session" arg'  # noqa
+                        )
+
                     async with ClientSession(
                         connector=TCPConnector(ssl=False)
                     ) as session:
@@ -297,7 +298,12 @@ class OrganisationRequestDetail(JSONRequest):
 
     async def iati_xml_requests(self, session) -> List["IatiXMLRequest"]:
         resources = await self.iati_xml_sources(session)
-        return [IatiXMLRequest(url=resource["url"], organisation_handle=self.organisation_handle) for resource in resources]
+        return [
+            IatiXMLRequest(
+                url=resource["url"], organisation_handle=self.organisation_handle
+            )
+            for resource in resources
+        ]
 
     async def result__results(self):
         result = await self.result()
@@ -313,7 +319,7 @@ class XMLRequest(BaseRequest):
         logger.debug("to_json %s", self)
         cached = await self.is_cached()
         if not cached:
-            logger.warn('Request was not cached')
+            logger.warn("Request was not cached")
             return {}
         got = await self.get(session=None)
         # Xml to JSON is not always clear about whether
@@ -330,6 +336,8 @@ class XMLRequest(BaseRequest):
             "total-budget",
             "budget-line",
             "codelist-item",
+            "budget",
+            "result",
         }
         try:
             assert got

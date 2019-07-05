@@ -32,15 +32,11 @@ class RequestsTestCase(TestCase):
         """
         We can fetch an organisation's details
         """
-        await tasks.xml_requests_get(
-            organisations=["ask"]
-        )
+        await tasks.xml_requests_get(organisations=["ask"])
 
     @async_to_sync
     async def test_create_instances_from_iatixml(self):
-        await tasks.xml_requests_get(
-            organisations=["ask"]
-        )
+        await tasks.xml_requests_get(organisations=["ask"])
 
     def test_fetch_organisation_xml(self):
         """

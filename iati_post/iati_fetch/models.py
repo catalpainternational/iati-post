@@ -17,6 +17,7 @@ class OrganisationAbbreviation(models.Model):
     def __str__(self):
         return self.abbreviation
 
+
 class Organisation(models.Model):
 
     id = models.TextField(primary_key=True)
@@ -30,7 +31,11 @@ class Organisation(models.Model):
 
     @classmethod
     def from_xml(
-        cls, organisation_element: dict, abbr: str, update: bool = False, attempt: int=0
+        cls,
+        organisation_element: dict,
+        abbr: str,
+        update: bool = False,
+        attempt: int = 0,
     ):
         assert abbr
         if isinstance(organisation_element, list):
@@ -61,16 +66,18 @@ class Organisation(models.Model):
             logger.debug(f"skip update of {pk}")
             return
 
-        ab_instance = OrganisationAbbreviation.objects.get_or_create(pk = abbr)[0]
+        ab_instance = OrganisationAbbreviation.objects.get_or_create(pk=abbr)[0]
         try:
             o, _created = cls.objects.get_or_create(
-                pk=pk, abbreviation = ab_instance, defaults=dict(element=organisation_element)
+                pk=pk,
+                abbreviation=ab_instance,
+                defaults=dict(element=organisation_element),
             )
         except IntegrityError:
             if attempt < 3:
-                attempt += 1 
+                attempt += 1
                 return cls.from_xml(organisation_element, abbr, update, attempt=attempt)
-            logger.error('Broke while trying to do organisation update')
+            logger.error("Broke while trying to do organisation update")
             return cls.objects.filter(pk=pk).first()
         if _created:
             logger.debug(f"Created {o}")
@@ -85,10 +92,109 @@ class ActivityFormatException(Exception):
     pass
 
 
+class ActivityLinkedModel(models.Model):
+    activity = models.ForeignKey("iati_fetch.Activity", on_delete=models.CASCADE)
+    element = JSONField(db_index=True, blank=True, null=True)
+
+    class Meta:
+        abstract = True
+
+    @classmethod
+    def from_xml(cls, activity_id, element_list):
+        for e in element_list:
+            cls.objects.create(activity_id=activity_id, element=e)
+
+
+class Transaction(ActivityLinkedModel):
+
+    activity = models.ForeignKey("iati_fetch.Activity", on_delete=models.CASCADE)
+    element = JSONField(db_index=True, blank=True, null=True)
+
+    # These fields can be long enough to cause indexing to fail
+    ref = JSONField(blank=True, null=True)
+    description = JSONField(blank=True, null=True)
+
+    @classmethod
+    def from_xml(cls, activity_id, transactions):
+        cls.objects.filter(activity_id=activity_id).delete()
+        for t in transactions:
+            try:
+                transaction_ref = t.pop("@ref", None)
+                transaction_description = t.pop("description", None)
+                cls.objects.create(
+                    activity_id=activity_id,
+                    element=t,
+                    ref=transaction_ref,
+                    description=transaction_description,
+                )
+            except BaseException:
+                logger.error("We have a problem with %s", (t), exc_info=1)
+                raise
+
+
+class ActivityNarrative(models.Model):
+    """
+    Pull out Narrative fields from the Activity so that we can
+    index the non-narratives
+    """
+
+    activity = models.ForeignKey("iati_fetch.Activity", on_delete=models.CASCADE)
+    path = models.TextField(blank=True, null=True)
+    lang = models.TextField(blank=True, null=True)
+    text = models.TextField(blank=True, null=True)
+
+
+class Budget(ActivityLinkedModel):
+    pass
+
+
+class Result(ActivityLinkedModel):
+    pass
+
+
+class DocumentLink(ActivityLinkedModel):
+    pass
+
+
 class Activity(models.Model):
 
     identifier = models.TextField(primary_key=True)
-    element = JSONField()
+    element = JSONField(db_index=True, blank=True, null=True)
+
+    def save_narratives(self, narratives, activity_element):
+
+        # Save narrative objects
+        narrative_instances = []
+        for path, text_or_items in narratives.items():
+            for text_item in text_or_items:
+                if text_item is None:
+                    logger.debug("No text")
+                    continue
+                text = None
+                lang = None
+
+                if isinstance(text_item, str):
+                    text = text_item
+                    lang = activity_element.get("@xml:lang", None)
+                elif isinstance(text_item, dict):
+                    lang = text_item.get("@xml:lang", None)
+                    text = text_item.get("#text", None)
+
+                if not lang:
+                    logger.debug("No lang assume en")
+                    lang = "en"
+
+                if text:
+                    narrative_instances.append(
+                        ActivityNarrative(activity_id=self.pk, lang=lang, text=text)
+                    )
+
+                else:
+                    # This happens when there is a lang tag but no #text
+                    logger.debug("No text")
+                    continue
+
+        ActivityNarrative.objects.bulk_create(narrative_instances)
 
     @staticmethod
     def _validate_activity_xml(activity_element):
@@ -102,6 +208,8 @@ class Activity(models.Model):
                 "Expected iati-identifier was missing in activity"
             )
 
+    @staticmethod
+    def _iid(activity_element):
         iid = activity_element["iati-identifier"]
         if not isinstance(iid, str):
             raise ActivityFormatException("Expected iati-identifier was a bad format")
@@ -111,8 +219,26 @@ class Activity(models.Model):
 
     @classmethod
     def from_xml(
-        cls, activity_element: dict, update=False
+        cls, activity_element: dict, update=True
     ) -> Union[None, Tuple[Activity, bool]]:
+        def find_narratives(element, path, narratives={}):
+            """
+            Narratives can be arbitrary lengths which makes "sensible" activities hard to index.
+            Take these fields into a related model.
+            """
+            for k, v in element.items():
+                if k == "narrative":
+                    narratives[f"{path}[{k}]"] = element.pop(k)
+                elif isinstance(v, dict):
+                    narratives.update(find_narratives(v, f"{path}[{k}]", narratives))
+                elif isinstance(v, list):
+                    for index, _element in enumerate(v):
+                        narratives.update(
+                            find_narratives(
+                                _element, f"{path}[{k}][{index}]", narratives
+                            )
+                        )
+            return narratives
 
         # Handle nested lists of activities
         if isinstance(activity_element, list):
@@ -120,17 +246,29 @@ class Activity(models.Model):
                 cls.from_xml(child_element)
             return
 
-        iid = cls._validate_activity_xml(activity_element)
-        exists = cls.objects.filter(pk=iid).exists()
+        cls._validate_activity_xml(activity_element)
+        iid = cls._iid(activity_element)
 
-        if exists and not update:
+        # Pop fields which will become related models
+        transactions = activity_element.pop("transaction", [])
+
+        # Pop fields - no models yet for these
+        budget = activity_element.pop("budget", [])
+        doclink = activity_element.pop("doclink", [])
+        result = activity_element.pop("result", [])
+
+        narratives = find_narratives(activity_element, "")
+
+        # Perform save or update
+        exists = cls.objects.filter(pk=iid).exists()
+        if cls.objects.filter(pk=iid).exists() and not update:
             logger.debug(f"skip update of activity {iid}")
-            return None
+            return
 
         elif exists:
             cls.objects.filter(pk=iid).update(element=activity_element)
             logger.debug(f"update activity {iid}")
-            return None
+
         else:
             try:
                 cls.objects.create(pk=iid, element=activity_element)
@@ -141,10 +279,23 @@ class Activity(models.Model):
                     cls.objects.create(pk=iid, element=activity_element)
                 except IntegrityError as e:
                     logger.error("Could not save activity: %s", e)
-                finally:
-                    return None
-            finally:
-                return None
+            except Exception as e:
+                logger.error("Could not save activity: %s", e)
+                logger.error("%s", activity_element)
+                raise
+
+        # If we successfully saved - save transactions
+        if not cls.objects.filter(pk=iid).exists():
+            logger.error("Activity %s not saved", iid)
+            return
+
+        # Post-create:
+        instance = cls.objects.filter(pk=iid).get()
+        Transaction.from_xml(iid, transactions)
+        Budget.from_xml(iid, budget)
+        DocumentLink.from_xml(iid, doclink)
+        Result.from_xml(iid, result)
+        instance.save_narratives(narratives, activity_element)
 
 
 class CodelistManager(models.Manager):
