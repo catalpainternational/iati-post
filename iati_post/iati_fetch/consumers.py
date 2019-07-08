@@ -43,12 +43,10 @@ class IatiRequestConsumer(AsyncConsumer):
         """
         Read an IATI xml file from cache and attempt to populate 
         Organisation(s) / Activit[y/ies] from it
-            async_to_sync(get_channel_layer().send)(
-                'iati', {
-                    'type': 'parse_xml',
-                    'url': 'https://files.transparency.org/content/download/2279/14136/file/IATI_TIS_Organisation.xml'  # noqa
-                    }
-                )
+
+        Args:
+            event: This should have a "url" like 'https://files.transparency.org/content/download/2279/14136/file/IATI_TIS_Organisation.xml'
+
         """
         url = requesters.IatiXMLRequest(event["url"])
         await url.to_instances()
@@ -102,10 +100,17 @@ class IatiConsumer(AsyncWebsocketConsumer):
 
 
 class IatiActivitiesConsumer(AsyncWebsocketConsumer):
+    """
+    Creates and GETs an requesters.IatiXMLRequest object for one activities XML
+    TODO: This takes no options. It should take the URL of the activity to be collected.
+    """
     async def connect(self):
         await self.accept()
 
     async def receive(self, text_data=None, bytes_data=None):
+        """
+        Make a request for https://aidstream.org/files/xml/ask-activities.xml
+        """
         request = requesters.IatiXMLRequest(
             url="https://aidstream.org/files/xml/ask-activities.xml"
         )
