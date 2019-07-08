@@ -10,6 +10,10 @@ Welcome to Iati Post's documentation!
    :maxdepth: 2
    :caption: Contents:
 
+   modules/views
+   modules/tasks
+   modules/consumers
+
 
 
 Indices and tables
