@@ -1,7 +1,7 @@
 {
   "name": "iati_post",
   "version": "0.0.1",
-  "description": "",
+  "description": "A Django framework for IATI data access",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -13,5 +13,14 @@
     "jquery": "^3.4.1",
     "popper.js": "^1.15.0",
     "vue": "^2.6.10"
-  }
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/catalpainternational/iati-post.git"
+  },
+  "bugs": {
+    "url": "https://github.com/catalpainternational/iati-post/issues"
+  },
+  "homepage": "https://github.com/catalpainternational/iati-post#readme"
 }
