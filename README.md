@@ -152,3 +152,12 @@ josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post$ autop
 ```
 
 Also expect all tests to pass
+
+## Documenting
+
+ - Prefer Google style docstrings
+ - Build docs with sphinx:
+
+```
+josh@josh-ThinkPad-T420:~/github/catalpainternational/iati-post/iati_post/docs$ pipenv run make html
+```
