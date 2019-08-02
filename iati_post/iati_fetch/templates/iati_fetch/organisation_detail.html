@@ -4,8 +4,8 @@
 <div class="starter-template">
     <h1>Organisations</h1>
     <p class="lead">A slightly asynchronous IATI data explorer.</p>
-    <a class="btn btn-primary" href="{% url 'iati-fetch:org-fetch-json' organisation_id=org.id %}">Fetch JSON data for this org</a>
-    <a class="btn btn-primary" href="{% url 'iati-fetch:org-fetch-xml' organisation_id=org.id %}">Fetch XML links</a>
+    <a class="btn btn-primary" href="{% url 'iati-fetch:org-fetch-json' organisation_id=org.pk_e %}">Fetch JSON data for this org</a>
+    <a class="btn btn-primary" href="{% url 'iati-fetch:org-fetch-xml' organisation_id=org.pk_e %}">Fetch XML links</a>
     {{ org }}
     <h2>JSON</h2>
 

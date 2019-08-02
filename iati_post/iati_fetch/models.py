@@ -7,6 +7,7 @@ from django.contrib.postgres.fields import JSONField
 from django.db import IntegrityError, models
 from django.utils import timezone
 
+from urllib import parse
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +29,13 @@ class Organisation(models.Model):
 
     def __str__(self):
         return self.id
+
+    @property
+    def pk_e(self):
+        '''
+        Returns an url-encoded PK for those orgs with a '/' in the name (grr)
+        '''
+        return parse.quote(self.pk, safe='')
 
     @classmethod
     def from_xml(

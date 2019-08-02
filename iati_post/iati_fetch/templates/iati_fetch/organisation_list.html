@@ -12,7 +12,7 @@
 
     <div class="row">{% for o in organisations %}
         <div class="col-2">
-            <a href='{% url "iati-fetch:org-detail" organisation_id=o.pk %}'>{{o.pk}}
+            <a href='{% url "iati-fetch:org-detail" organisation_id=o.pk_e %}'>{{o.pk}}</a>
         </div>{% endfor %}
     </div>
 </div>

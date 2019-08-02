@@ -1,5 +1,6 @@
 from django.apps import apps
 from django.views.generic import TemplateView, View
+from urllib import parse
 
 # Create your views here.
 
@@ -22,7 +23,7 @@ class OrganisationDetail(TemplateView):
 
     def get_context_data(self, organisation_id):
         org = apps.get_model("iati_fetch", "Organisation").objects.get(
-            pk=organisation_id
+            pk=parse.unquote(organisation_id)
         )
         return {"org": org}
 
