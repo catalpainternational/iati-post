@@ -110,8 +110,10 @@ class ActivityLinkedModel(models.Model):
     @classmethod
     def from_xml(cls, activity_id, element_list):
         for e in element_list:
-            cls.objects.create(activity_id=activity_id, element=e)
-
+            try:
+                cls.objects.create(activity_id=activity_id, element=e)
+            except:
+                logger.warning('Error on save')
 
 class Transaction(ActivityLinkedModel):
 
@@ -235,19 +237,23 @@ class Activity(models.Model):
             "sensible" activities hard to index.
             Take these fields into a related model.
             """
-            for k, v in element.items():
-                if k == "narrative":
-                    narratives[f"{path}[{k}]"] = element.pop(k)
-                elif isinstance(v, dict):
-                    narratives.update(find_narratives(v, f"{path}[{k}]", narratives))
-                elif isinstance(v, list):
-                    for index, _element in enumerate(v):
-                        narratives.update(
-                            find_narratives(
-                                _element, f"{path}[{k}][{index}]", narratives
+            try:
+                for k, v in element.items():
+                    if k == "narrative":
+                        narratives[f"{path}[{k}]"] = element.pop(k)
+                    elif isinstance(v, dict):
+                        narratives.update(find_narratives(v, f"{path}[{k}]", narratives))
+                    elif isinstance(v, list):
+                        for index, _element in enumerate(v):
+                            narratives.update(
+                                find_narratives(
+                                    _element, f"{path}[{k}][{index}]", narratives
+                                )
                             )
-                        )
-            return narratives
+                return narratives
+            except:
+                logger.warn('Oops on narrative collection')
+                return None
 
         # Handle nested lists of activities
         if isinstance(activity_element, list):
@@ -266,7 +272,7 @@ class Activity(models.Model):
         doclink = activity_element.pop("doclink", [])
         result = activity_element.pop("result", [])
 
-        narratives = find_narratives(activity_element, "")
+        narratives = find_narratives(activity_element, "") or {}
 
         # Perform save or update
         exists = cls.objects.filter(pk=iid).exists()

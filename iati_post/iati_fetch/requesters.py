@@ -406,7 +406,7 @@ class IatiXMLRequest(XMLRequest):
                 pass
 
     async def to_instances_semaphored(
-        self, sema: asyncio.Semaphore, session: Union[ClientSession, None]
+        self, sema: asyncio.Semaphore, session: ClientSession
     ):
         async with sema:
             await self.get(session=session)
