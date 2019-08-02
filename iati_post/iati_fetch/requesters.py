@@ -249,7 +249,10 @@ class OrganisationRequestList(JSONRequest):
     url: str = organisation_list_url
 
     async def to_list(self, session: Union[ClientSession, None]):
-        result = await self.get(session=session)
+        if session:
+            result = await self.get(session=session)
+        else:
+            result = await self.get(internal_session=True)
         return result["result"]
 
     def to_models(self):
@@ -327,8 +330,8 @@ class XMLRequest(BaseRequest):
         cached = await self.is_cached()
         if not cached:
             logger.warn("Request was not cached")
-            return {}
-        got = await self.get(session=None)
+        #     return {}
+        got = await self.get(internal_session=True)
         # Xml to JSON is not always clear about whether
         # element should be treated as a single element or a list.
         # In any situation where you encounter issues iterating over
