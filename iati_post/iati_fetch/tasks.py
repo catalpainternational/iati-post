@@ -14,9 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 async def fetch_requests(*requests, semaphore_count=2000, cached=True, uncached=True):
+    """
+    This takes a list of Request objects with an asyncronous 'get' function
+    and collects them all
+    """
     sem = asyncio.Semaphore(semaphore_count)
     tasks = []
-    print(len(requests))
 
     async def only_uncached_requests():
         returned = []
